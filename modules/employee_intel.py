@@ -1,0 +1,401 @@
+"""Employee Intelligence Module - Company employee discovery and leaked credential checking"""
+
+import requests
+import re
+from typing import Dict, List, Optional
+from urllib.parse import quote
+import hashlib
+
+
+class EmployeeIntel:
+    """Employee and company intelligence gathering"""
+    
+    def __init__(self):
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        # Have I Been Pwned API
+        self.hibp_api = "https://api.pwnedpasswords.com"
+        self.hibp_email_api = "https://haveibeenpwned.com/api/v3"
+        
+        # Common email patterns for employees
+        self.email_patterns = [
+            'firstname.lastname',
+            'firstnamelastname',
+            'f.lastname',
+            'firstname.l',
+            'flastname',
+            'firstname_lastname',
+            'f_lastname'
+        ]
+    
+    def discover_employees(self, company: str, method: str = "linkedin") -> List[Dict]:
+        """Discover employees of a company"""
+        employees = []
+        
+        if method == "linkedin":
+            employees = self._discover_from_linkedin(company)
+        elif method == "github":
+            employees = self._discover_from_github(company)
+        elif method == "gitlab":
+            employees = self._discover_from_gitlab(company)
+        elif method == "website":
+            employees = self._discover_from_website(company)
+        
+        return employees
+    
+    def _discover_from_linkedin(self, company: str) -> List[Dict]:
+        """Discover employees from LinkedIn (simulated - requires API access)"""
+        employees = []
+        
+        # Note: Real LinkedIn scraping requires authentication cookies (JSESSIONID, li-at)
+        # This is a placeholder structure - in production you'd use LinkedIn API or authenticated scraping
+        
+        # For demonstration, we'll try to find public LinkedIn company pages
+        try:
+            # Search for company LinkedIn page
+            search_url = f"https://www.linkedin.com/search/results/companies/?keywords={quote(company)}"
+            # In production, you'd parse the results with authenticated session
+            
+            # Placeholder employee structure
+            employees.append({
+                'name': 'Employee Name',
+                'title': 'Job Title',
+                'company': company,
+                'linkedin_url': f"https://www.linkedin.com/in/placeholder",
+                'email': None,
+                'social_profiles': {}
+            })
+        except:
+            pass
+        
+        return employees
+    
+    def _discover_from_github(self, company: str) -> List[Dict]:
+        """Discover employees from GitHub"""
+        employees = []
+        
+        try:
+            # Search GitHub for users with company in bio or email
+            url = f"https://api.github.com/search/users?q={quote(company)}"
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                for user in data.get('items', [])[:50]:  # Limit to 50
+                    username = user.get('login')
+                    profile_url = user.get('html_url')
+                    
+                    # Get user details
+                    try:
+                        user_url = f"https://api.github.com/users/{username}"
+                        user_response = requests.get(user_url, headers=self.headers, timeout=10)
+                        if user_response.status_code == 200:
+                            user_data = user_response.json()
+                            
+                            # Check if company matches
+                            user_company = user_data.get('company', '').lower()
+                            if company.lower() in user_company or user_company in company.lower():
+                                employees.append({
+                                    'name': user_data.get('name', username),
+                                    'title': 'Developer',  # GitHub doesn't provide titles
+                                    'company': user_data.get('company', company),
+                                    'github_url': profile_url,
+                                    'email': user_data.get('email'),
+                                    'location': user_data.get('location'),
+                                    'bio': user_data.get('bio'),
+                                    'social_profiles': {
+                                        'github': profile_url
+                                    }
+                                })
+                    except:
+                        continue
+        except:
+            pass
+        
+        return employees
+    
+    def _discover_from_gitlab(self, company: str) -> List[Dict]:
+        """Discover employees from GitLab"""
+        employees = []
+        
+        try:
+            # Search GitLab for users
+            url = f"https://gitlab.com/api/v4/users?username={quote(company)}"
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                users = response.json() if isinstance(response.json(), list) else [response.json()]
+                for user in users[:50]:
+                    employees.append({
+                        'name': user.get('name', user.get('username')),
+                        'title': 'Developer',
+                        'company': company,
+                        'gitlab_url': user.get('web_url'),
+                        'email': user.get('email'),
+                        'location': user.get('location'),
+                        'bio': user.get('bio'),
+                        'social_profiles': {
+                            'gitlab': user.get('web_url')
+                        }
+                    })
+        except:
+            pass
+        
+        return employees
+    
+    def _discover_from_website(self, company: str) -> List[Dict]:
+        """Discover employees from company website"""
+        employees = []
+        
+        # Try common employee page patterns
+        common_paths = [
+            '/team',
+            '/about',
+            '/about-us',
+            '/people',
+            '/employees',
+            '/staff',
+            '/leadership'
+        ]
+        
+        for path in common_paths:
+            try:
+                url = f"https://{company}{path}"
+                response = requests.get(url, headers=self.headers, timeout=10)
+                if response.status_code == 200:
+                    # Extract names and emails from page
+                    emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', response.text)
+                    for email in emails:
+                        if company.lower() in email.lower():
+                            employees.append({
+                                'name': email.split('@')[0].replace('.', ' ').title(),
+                                'title': 'Employee',
+                                'company': company,
+                                'email': email,
+                                'source': url
+                            })
+            except:
+                continue
+        
+        return employees
+    
+    def find_personal_emails(self, employee: Dict) -> List[str]:
+        """Find personal email addresses for an employee"""
+        emails = []
+        
+        name = employee.get('name', '')
+        if not name:
+            return emails
+        
+        # Parse name
+        name_parts = name.lower().split()
+        if len(name_parts) >= 2:
+            firstname = name_parts[0]
+            lastname = name_parts[-1]
+            
+            # Common email domains
+            domains = [
+                'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com',
+                'protonmail.com', 'icloud.com', 'aol.com', 'mail.com'
+            ]
+            
+            # Generate email variations
+            patterns = [
+                f"{firstname}.{lastname}",
+                f"{firstname}{lastname}",
+                f"{firstname[0]}.{lastname}",
+                f"{firstname}.{lastname[0]}",
+                f"{firstname[0]}{lastname}",
+                f"{firstname}_{lastname}",
+                f"{firstname}-{lastname}"
+            ]
+            
+            for pattern in patterns:
+                for domain in domains:
+                    emails.append(f"{pattern}@{domain}")
+        
+        return list(set(emails))
+    
+    def check_leaked_credentials(self, email: str, api_key: Optional[str] = None) -> Dict:
+        """Check if email has leaked credentials using Have I Been Pwned"""
+        result = {
+            'email': email,
+            'breached': False,
+            'breaches': [],
+            'pastes': []
+        }
+        
+        try:
+            # Check breaches
+            url = f"{self.hibp_email_api}/breachedaccount/{quote(email)}"
+            headers = self.headers.copy()
+            if api_key:
+                headers['hibp-api-key'] = api_key
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                result['breached'] = True
+                result['breaches'] = response.json()
+            elif response.status_code == 404:
+                result['breached'] = False
+            elif response.status_code == 429:
+                result['error'] = 'Rate limited - API key recommended'
+        
+        except Exception as e:
+            result['error'] = str(e)
+        
+        # Check pastes (requires API key)
+        if api_key:
+            try:
+                url = f"{self.hibp_email_api}/pasteaccount/{quote(email)}"
+                headers = self.headers.copy()
+                headers['hibp-api-key'] = api_key
+                
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    result['pastes'] = response.json()
+            except:
+                pass
+        
+        return result
+    
+    def check_password_leak(self, password: str) -> int:
+        """Check if password has been leaked using Have I Been Pwned"""
+        # Hash password with SHA-1
+        sha1_hash = hashlib.sha1(password.encode()).hexdigest().upper()
+        prefix = sha1_hash[:5]
+        suffix = sha1_hash[5:]
+        
+        try:
+            url = f"{self.hibp_api}/range/{prefix}"
+            response = requests.get(url, headers=self.headers, timeout=10)
+            
+            if response.status_code == 200:
+                hashes = response.text.split('\n')
+                for hash_line in hashes:
+                    hash_suffix, count = hash_line.split(':')
+                    if hash_suffix == suffix:
+                        return int(count)
+        except:
+            pass
+        
+        return 0
+    
+    def find_employee_repositories(self, employee: Dict) -> List[Dict]:
+        """Find personal code repositories for an employee"""
+        repos = []
+        
+        # GitHub repositories
+        github_url = employee.get('social_profiles', {}).get('github')
+        if github_url:
+            username = github_url.split('/')[-1]
+            try:
+                url = f"https://api.github.com/users/{username}/repos"
+                response = requests.get(url, headers=self.headers, timeout=10)
+                if response.status_code == 200:
+                    for repo in response.json():
+                        repos.append({
+                            'name': repo.get('name'),
+                            'full_name': repo.get('full_name'),
+                            'url': repo.get('html_url'),
+                            'description': repo.get('description'),
+                            'language': repo.get('language'),
+                            'private': repo.get('private'),
+                            'platform': 'GitHub'
+                        })
+            except:
+                pass
+        
+        # GitLab repositories
+        gitlab_url = employee.get('social_profiles', {}).get('gitlab')
+        if gitlab_url:
+            username = gitlab_url.split('/')[-1]
+            try:
+                url = f"https://gitlab.com/api/v4/users/{username}/projects"
+                response = requests.get(url, headers=self.headers, timeout=10)
+                if response.status_code == 200:
+                    for repo in response.json():
+                        repos.append({
+                            'name': repo.get('name'),
+                            'url': repo.get('web_url'),
+                            'description': repo.get('description'),
+                            'platform': 'GitLab'
+                        })
+            except:
+                pass
+        
+        return repos
+    
+    def analyze_company(self, company: str) -> Dict:
+        """Comprehensive company analysis"""
+        results = {
+            'company': company,
+            'employees': [],
+            'leaked_credentials': [],
+            'repositories': []
+        }
+        
+        # Discover employees from multiple sources
+        print(f"  [*] Discovering employees from GitHub...")
+        github_employees = self._discover_from_github(company)
+        results['employees'].extend(github_employees)
+        
+        print(f"  [*] Discovering employees from GitLab...")
+        gitlab_employees = self._discover_from_gitlab(company)
+        results['employees'].extend(gitlab_employees)
+        
+        print(f"  [*] Discovering employees from website...")
+        website_employees = self._discover_from_website(company)
+        results['employees'].extend(website_employees)
+        
+        # Remove duplicates
+        seen = set()
+        unique_employees = []
+        for emp in results['employees']:
+            key = emp.get('email') or emp.get('name')
+            if key and key not in seen:
+                seen.add(key)
+                unique_employees.append(emp)
+        results['employees'] = unique_employees
+        
+        # Find personal emails and check for leaks
+        print(f"  [*] Checking for leaked credentials...")
+        for employee in results['employees']:
+            # Get personal emails
+            personal_emails = self.find_personal_emails(employee)
+            
+            # Check work email if available
+            work_email = employee.get('email')
+            if work_email:
+                leak_check = self.check_leaked_credentials(work_email)
+                if leak_check.get('breached'):
+                    results['leaked_credentials'].append({
+                        'employee': employee.get('name'),
+                        'email': work_email,
+                        'breaches': leak_check.get('breaches', []),
+                        'type': 'work'
+                    })
+            
+            # Check personal emails
+            for email in personal_emails[:3]:  # Limit to 3 per employee
+                leak_check = self.check_leaked_credentials(email)
+                if leak_check.get('breached'):
+                    results['leaked_credentials'].append({
+                        'employee': employee.get('name'),
+                        'email': email,
+                        'breaches': leak_check.get('breaches', []),
+                        'type': 'personal'
+                    })
+        
+        # Find repositories
+        print(f"  [*] Finding employee repositories...")
+        for employee in results['employees']:
+            repos = self.find_employee_repositories(employee)
+            if repos:
+                results['repositories'].extend(repos)
+        
+        return results
+
