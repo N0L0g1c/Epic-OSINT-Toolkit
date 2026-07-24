@@ -37,11 +37,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Reports
+# Reports (generated scan output)
 reports/
-*.json
-*.html
-*.txt
 
 # Logs
 *.log

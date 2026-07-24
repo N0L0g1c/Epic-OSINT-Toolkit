@@ -28,7 +28,11 @@ class ReportGenerator:
                 report.append("DNS Records:")
                 for record_type, values in domain_data['dns_records'].items():
                     if values:
-                        report.append(f"  {record_type}: {', '.join(values)}")
+                        if isinstance(values, (list, tuple)):
+                            formatted = ', '.join(str(v) for v in values)
+                        else:
+                            formatted = str(values)
+                        report.append(f"  {record_type}: {formatted}")
             if 'subdomains' in domain_data and domain_data['subdomains']:
                 report.append(f"\nSubdomains Found: {len(domain_data['subdomains'])}")
                 for subdomain in domain_data['subdomains'][:20]:  # Limit to 20
@@ -177,7 +181,11 @@ class ReportGenerator:
                 html.append("<tr><th>Type</th><th>Value</th></tr>")
                 for record_type, values in domain_data['dns_records'].items():
                     if values:
-                        html.append(f"<tr><td>{record_type}</td><td>{', '.join(values)}</td></tr>")
+                        if isinstance(values, (list, tuple)):
+                            formatted = ', '.join(str(v) for v in values)
+                        else:
+                            formatted = str(values)
+                        html.append(f"<tr><td>{record_type}</td><td>{formatted}</td></tr>")
                 html.append("</table>")
             
             if 'subdomains' in domain_data and domain_data['subdomains']:
@@ -317,6 +325,16 @@ class ReportGenerator:
             if 'profiles' in social:
                 found = sum(1 for p, info in social['profiles'].items() if info.get('exists'))
                 print(f"Social Profiles Found: {found}")
+
+        if 'github' in res:
+            github = res['github']
+            profile = github.get('profile') or {}
+            if profile.get('login'):
+                print(f"GitHub User: {profile.get('login')}")
+                print(f"GitHub Repos: {profile.get('public_repos', 0)}")
+            repos = github.get('repositories') or []
+            if repos and not profile.get('public_repos'):
+                print(f"GitHub Repos Analyzed: {len(repos)}")
         
         if 'company' in res:
             company = res['company']

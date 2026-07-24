@@ -335,7 +335,7 @@ class OSINTToolkit:
         }
         
         if scan_type == "domain":
-            all_results['results'] = self.gather_domain_intel(target, {
+            all_results['results']['domain'] = self.gather_domain_intel(target, {
                 'dns': True,
                 'subdomains': True,
                 'whois': True,
@@ -351,7 +351,7 @@ class OSINTToolkit:
                     'tech': True,
                     'extract': True
                 })
-            except:
+            except Exception:
                 pass
             
             # Discover emails
@@ -374,7 +374,7 @@ class OSINTToolkit:
             })
         
         elif scan_type == "username":
-            all_results['results'] = self.gather_social_intel(target, {
+            all_results['results']['social'] = self.gather_social_intel(target, {
                 'search': True,
                 'email': True,
                 'associated': True
@@ -389,7 +389,7 @@ class OSINTToolkit:
             })
         
         elif scan_type == "company":
-            all_results['results'] = self.analyze_company(target, {
+            all_results['results']['company'] = self.analyze_company(target, {
                 'discover': True,
                 'check_leaks': True,
                 'hibp_api_key': None
@@ -505,18 +505,25 @@ Examples:
             }
             
             if args.type == 'domain':
-                options = {
-                    'dns': args.dns or not any([args.dns, args.subdomains, args.whois, args.ssl, args.crawl, args.directories, args.emails, args.urls, args.ports]),
-                    'subdomains': args.subdomains,
-                    'whois': args.whois,
-                    'ssl': args.ssl
-                }
-                results['results']['domain'] = toolkit.gather_domain_intel(args.target, options)
+                module_flags = [
+                    args.dns, args.subdomains, args.whois, args.ssl, args.crawl,
+                    args.directories, args.comprehensive_crawl, args.emails,
+                    args.urls, args.urlteam, args.ports
+                ]
+                # Default to DNS when no module flags are provided
+                run_domain = args.dns or args.subdomains or args.whois or args.ssl or not any(module_flags)
+                if run_domain:
+                    results['results']['domain'] = toolkit.gather_domain_intel(args.target, {
+                        'dns': args.dns or not any(module_flags),
+                        'subdomains': args.subdomains,
+                        'whois': args.whois,
+                        'ssl': args.ssl
+                    })
                 
                 if args.crawl or args.directories or args.comprehensive_crawl:
                     url = f"https://{args.target}" if not args.target.startswith('http') else args.target
                     results['results']['website'] = toolkit.crawl_website(url, {
-                        'crawl': args.crawl,
+                        'crawl': args.crawl or args.comprehensive_crawl,
                         'directories': args.directories,
                         'tech': True,
                         'extract': True,
@@ -539,9 +546,9 @@ Examples:
                     keywords = [args.target]
                     if args.keywords_file:
                         try:
-                            with open(args.keywords_file, 'r') as f:
+                            with open(args.keywords_file, 'r', encoding='utf-8') as f:
                                 keywords = [line.strip() for line in f if line.strip()]
-                        except:
+                        except OSError:
                             pass
                     
                     results['results']['urls'] = toolkit.hunt_urls(args.target, {
@@ -551,9 +558,15 @@ Examples:
                         'keywords': keywords,
                         'date': args.urlteam_date
                     })
+
+                if args.ports:
+                    results['results']['ports'] = toolkit.scan_ports(args.target, {
+                        'scan': True,
+                        'ports': args.ports_range
+                    })
             
             elif args.type == 'onion':
-                if args.dark_web:
+                if args.dark_web or not args.ports:
                     results['results']['dark_web'] = toolkit.analyze_dark_web(args.target, {
                         'analyze': True,
                         'crawl': True,
@@ -569,7 +582,7 @@ Examples:
                     })
             
             elif args.type == 'username':
-                if args.social:
+                if args.social or (not args.github):
                     results['results']['social'] = toolkit.gather_social_intel(args.target, {
                         'search': True,
                         'email': True,
@@ -585,12 +598,11 @@ Examples:
                     })
             
             elif args.type == 'company':
-                if args.employees or args.leaks:
-                    results['results']['company'] = toolkit.analyze_company(args.target, {
-                        'discover': args.employees or True,
-                        'check_leaks': args.leaks or True,
-                        'hibp_api_key': args.hibp_api_key
-                    })
+                results['results']['company'] = toolkit.analyze_company(args.target, {
+                    'discover': args.employees or not args.leaks,
+                    'check_leaks': args.leaks or not args.employees,
+                    'hibp_api_key': args.hibp_api_key
+                })
         
         # Save results
         if not args.quiet:

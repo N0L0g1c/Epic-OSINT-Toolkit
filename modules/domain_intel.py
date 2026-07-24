@@ -115,17 +115,20 @@ class DomainIntel:
         subdomains = []
         try:
             # Using crt.sh API
-            url = f"https://crt.sh/?q=%.{domain}&output=json"
-            response = requests.get(url, timeout=10)
+            from urllib.parse import quote
+            url = f"https://crt.sh/?q={quote('%.' + domain)}&output=json"
+            response = requests.get(url, timeout=15)
             if response.status_code == 200:
                 data = response.json()
                 for entry in data:
                     name = entry.get('name_value', '')
-                    if domain in name:
-                        subdomains.append(name)
-        except:
+                    for candidate in name.split('\n'):
+                        candidate = candidate.strip().lstrip('*.')
+                        if candidate.endswith(domain) or candidate == domain:
+                            subdomains.append(candidate)
+        except Exception:
             pass
-        return subdomains
+        return sorted(set(subdomains))
     
     def _search_engines(self, domain: str) -> List[str]:
         """Search for subdomains using search engines"""

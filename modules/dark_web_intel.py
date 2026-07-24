@@ -22,14 +22,17 @@ class DarkWebIntel:
         
         if use_tor:
             try:
-                import socks
-                import socket
-                # Configure SOCKS proxy for Tor
-                socks.set_default_proxy(socks.SOCKS5, "127.0.0.1", 9050)
-                socket.socket = socks.socksocket
+                import socks  # noqa: F401 — required by requests for socks5h://
+                # Scope Tor to this session only (avoid global socket monkey-patching)
+                self.session.proxies.update({
+                    'http': tor_proxy.replace('socks5://', 'socks5h://', 1)
+                    if tor_proxy.startswith('socks5://') else tor_proxy,
+                    'https': tor_proxy.replace('socks5://', 'socks5h://', 1)
+                    if tor_proxy.startswith('socks5://') else tor_proxy,
+                })
                 print("  [*] Tor proxy configured (requires Tor running on 127.0.0.1:9050)")
             except ImportError:
-                print("  [!] PySocks not installed. Install with: pip install pysocks")
+                print("  [!] PySocks not installed. Install with: pip install PySocks")
                 print("  [!] Continuing without Tor proxy...")
                 self.use_tor = False
             except Exception as e:
