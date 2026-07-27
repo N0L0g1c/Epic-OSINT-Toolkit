@@ -25,7 +25,21 @@ chmod +x setup.sh
 source venv/bin/activate
 ```
 
-## Basic Examples
+## Interactive TUI (recommended)
+
+Launch the keyboard-driven ASCII interface (no arguments needed):
+
+```bash
+python osint_toolkit.py
+# or
+python osint_toolkit.py --tui
+```
+
+Controls: **↑↓** navigate · **Enter** select · **Space** toggle options · **Esc/q** back
+
+All modules (domain, social, GitHub, crawl, emails, URLs, ports, employees, dark web), settings, and report browsing are available from the menu.
+
+## Basic Examples (classic CLI)
 
 ### 1. Full Domain Scan
 ```bash

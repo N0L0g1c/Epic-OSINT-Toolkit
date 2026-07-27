@@ -424,6 +424,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Interactive TUI (keyboard GUI)
+  python osint_toolkit.py
+  python osint_toolkit.py --tui
+
   # Full domain scan
   python osint_toolkit.py -t example.com --full
   
@@ -444,7 +448,8 @@ Examples:
         """
     )
     
-    parser.add_argument('-t', '--target', required=True, help='Target (domain, username, IP, company, etc.)')
+    parser.add_argument('-t', '--target', help='Target (domain, username, IP, company, etc.)')
+    parser.add_argument('--tui', action='store_true', help='Launch interactive ASCII/ANSI TUI')
     parser.add_argument('--type', choices=['domain', 'username', 'ip', 'url', 'company', 'onion'], default='domain',
                        help='Type of target (default: domain)')
     parser.add_argument('--full', action='store_true', help='Run full comprehensive scan')
@@ -487,6 +492,18 @@ Examples:
     # Initialize toolkit
     toolkit = OSINTToolkit(output_dir=args.output)
     
+    # Interactive TUI when no target given, or --tui requested
+    if args.tui or not args.target:
+        from modules.tui import launch_tui
+        if args.tor:
+            toolkit.dark_web_intel = DarkWebIntel(use_tor=True)
+        try:
+            launch_tui(toolkit)
+        except KeyboardInterrupt:
+            print("\n[!] Exited")
+            sys.exit(0)
+        return
+
     # Enable Tor if requested
     if args.tor:
         toolkit.dark_web_intel = DarkWebIntel(use_tor=True)

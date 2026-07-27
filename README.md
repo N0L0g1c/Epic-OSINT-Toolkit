@@ -137,7 +137,21 @@ chmod +x osint_toolkit.py
 
 ## 💻 Usage
 
-### Basic Usage
+### Interactive TUI (keyboard GUI)
+
+Launch with no arguments for a full-screen ASCII/ANSI menu you drive with the keyboard:
+
+```bash
+python osint_toolkit.py
+# or
+python osint_toolkit.py --tui
+```
+
+**Controls:** Up/Down navigate · Enter select · Space toggle options · Esc/q back
+
+All modules, settings, and saved-report browsing are available from the menu.
+
+### Basic Usage (classic CLI)
 
 **Full domain scan:**
 ```bash
