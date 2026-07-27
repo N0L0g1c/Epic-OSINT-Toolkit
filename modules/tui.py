@@ -1192,14 +1192,48 @@ class EpicTUI:
             self._scroll_text("Error", str(exc))
 
     def _screen_crypto(self) -> None:
+        from modules.crypto_intel import CHAIN_GROUPS
+        # Defaults: auto on; evm off (opt-in multi-sweep)
+        toggles = [("auto", "Auto (detected chain only)", True)]
+        toggles.append(("evm", "EVM — all ETH L1/L2 as one", False))
+        for gid, meta in sorted(CHAIN_GROUPS.items()):
+            if gid == "evm":
+                continue
+            toggles.append((gid, meta.get("label") or gid, False))
+        toggles.extend([
+            ("tokens", "ERC-20 token holdings (Ethplorer)", True),
+            ("txs", "ETH tx list (needs Etherscan key)", True),
+        ])
+        result = self._toggle_options("Web3 chain selection", toggles, [])
+        if not result:
+            return
+        selected = []
+        if result.get("auto"):
+            selected.append("auto")
+        if result.get("evm"):
+            selected.append("evm")
+        for gid in CHAIN_GROUPS:
+            if gid == "evm":
+                continue
+            if result.get(gid):
+                selected.append(gid)
+        if not selected:
+            selected = ["auto"]
+        if len(selected) > 1 and "auto" in selected:
+            selected = [s for s in selected if s != "auto"]
         target = self._ask_target("Wallet / ENS / tx hash")
         if not target:
             return
         self._apply_api_keys()
+        opts = {
+            "tokens": bool(result.get("tokens", True)),
+            "txs": bool(result.get("txs", True)),
+            "chains": selected,
+        }
         try:
             data = self._run_with_spinner(
-                f"Web3 -> {target}",
-                lambda: self.toolkit.analyze_crypto(target, {"tokens": True, "txs": True}),
+                f"Web3 [{','.join(selected)}] -> {target}",
+                lambda: self.toolkit.analyze_crypto(target, opts),
             )
             self._show_results(self._wrap(target, "wallet", {"crypto": data}))
         except Exception as exc:

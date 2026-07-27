@@ -619,7 +619,9 @@ class OSINTToolkit:
                 pass
 
         elif scan_type == "wallet":
-            all_results['results']['crypto'] = self.analyze_crypto(target, {'tokens': True, 'txs': True})
+            all_results['results']['crypto'] = self.analyze_crypto(target, {
+                'tokens': True, 'txs': True, 'chains': 'auto',
+            })
             all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 20})
             all_results['results']['dorks'] = self.generate_dorks(target, {'kind': 'wallet'})
 
@@ -794,7 +796,10 @@ Examples:
     parser.add_argument('--abuse', action='store_true', help='DNSBL / abuse reputation')
     parser.add_argument('--ioc', action='store_true', help='IOC enrichment (VT/OTX if keyed)')
     parser.add_argument('--crypto', action='store_true', help='Web3 wallet / ENS / tx intelligence')
-    parser.add_argument('--crypto-chains', action='store_true', help='List supported blockchains')
+    parser.add_argument('--crypto-chains', action='store_true',
+                        help='List selectable chain groups (evm = all EVM L1/L2)')
+    parser.add_argument('--chains', default='auto',
+                        help='Crypto chain groups: auto|all|evm|bitcoin|solana|… (comma-separated)')
     parser.add_argument('--screenshot', action='store_true', help='Headless Chrome screenshot if installed')
     parser.add_argument('--graph', action='store_true', help='Export correlation graph (JSON + GraphML)')
     parser.add_argument('--tor-check', action='store_true', help='Check Tor SOCKS health')
@@ -855,9 +860,18 @@ Examples:
             print(f"{p.get('id')}\t{p.get('name')}\t{p.get('description', '')}")
         return
     if args.crypto_chains:
-        from modules.crypto_intel import CryptoIntel
-        for name, meta in sorted(CryptoIntel.supported().items()):
-            print(f"{name:12}  {meta.get('tier', ''):8}  {meta.get('family', ''):12}  {meta.get('note', '')}")
+        from modules.crypto_intel import CryptoIntel, CHAIN_GROUPS, ERC20_VIA_EVM, _EVM_RPCS
+        print("Selectable groups (pass via --chains):\n")
+        print(f"  {'GROUP':12}  {'FAMILY':12}  NOTE")
+        for name, meta in sorted(CHAIN_GROUPS.items()):
+            print(f"  {name:12}  {str(meta.get('family', '')):12}  {meta.get('note', '')}")
+        print(f"\n  evm expands to: {', '.join(sorted(_EVM_RPCS.keys()))}")
+        print(f"\n  ERC-20 via evm: {', '.join(ERC20_VIA_EVM)}")
+        print("\nExamples:")
+        print("  --crypto --chains auto          # detected chain only (no full EVM sweep)")
+        print("  --crypto --chains evm           # ETH + all EVM L2s for a 0x address")
+        print("  --crypto --chains bitcoin,near  # independent groups only")
+        print("  --crypto --chains all           # everything applicable")
         return
     if args.tor_check:
         print(json.dumps(toolkit.tor_health(), indent=2, default=str))
@@ -971,7 +985,9 @@ Examples:
             if args.ioc:
                 results['results']['ioc'] = toolkit.enrich_ioc(args.target)
             if args.crypto:
-                results['results']['crypto'] = toolkit.analyze_crypto(args.target)
+                results['results']['crypto'] = toolkit.analyze_crypto(args.target, {
+                    'tokens': True, 'txs': True, 'chains': args.chains,
+                })
             if args.screenshot:
                 url = args.target if args.target.startswith('http') else f"https://{args.target}"
                 results['results']['screenshot'] = toolkit.capture_screenshot(url)
@@ -1092,7 +1108,9 @@ Examples:
             
             elif scan_type == 'wallet':
                 if 'crypto' not in results['results']:
-                    results['results']['crypto'] = toolkit.analyze_crypto(args.target)
+                    results['results']['crypto'] = toolkit.analyze_crypto(args.target, {
+                        'tokens': True, 'txs': True, 'chains': args.chains,
+                    })
                 if args.pastes:
                     results['results']['pastes'] = toolkit.hunt_pastes(args.target, {'limit': 20})
                 if args.dorks:

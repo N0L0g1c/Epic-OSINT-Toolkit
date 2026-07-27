@@ -63,11 +63,29 @@ python osint_toolkit.py -t "+15551234567" --phone
 ```
 
 ### Web3 / crypto
+
+List selectable groups (`evm` = all Ethereum L1/L2 as **one** choice):
+
 ```bash
-python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto
-python osint_toolkit.py -t vitalik.eth --auto
-python osint_toolkit.py -t bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq --crypto --dorks --pastes
+python osint_toolkit.py --crypto-chains
 ```
+
+| Flag | Effect |
+|------|--------|
+| `--chains auto` | Detected chain only (default; fast) |
+| `--chains evm` | Sweep ETH + Arb/OP/zkSync/Blast/… for a `0x` address |
+| `--chains bitcoin,near` | Independent groups only |
+| `--chains all` | Everything applicable |
+
+```bash
+python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto --chains auto
+python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto --chains evm
+python osint_toolkit.py -t vitalik.eth --crypto --chains evm --etherscan-key YOUR_KEY
+python osint_toolkit.py -t root.near --crypto --chains near
+python osint_toolkit.py -t bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq --crypto --chains bitcoin --dorks --pastes
+```
+
+In the TUI, open **Web3 / Crypto**, toggle **Auto** / **EVM** / independent chains, then enter the address.
 
 ### Meta / dark web / extras
 ```bash

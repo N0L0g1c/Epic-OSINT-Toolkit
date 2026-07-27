@@ -12,7 +12,7 @@ Inspired by and combining ideas from:
 - **TorBot** — dark-web .onion analysis  
 - **EmploLeaks** — employees + breach checks  
 - **Emora / Profil3r / Sherlock-class** — username matrix  
-- Plus: Wayback CDX, BGPView ASN, cloud buckets, takeover fingerprints, favicon/Shodan pivots, EXIF, dork packs
+- Plus: Wayback CDX, BGPView ASN, cloud buckets, takeover fingerprints, favicon/Shodan pivots, EXIF, dork packs, **Web3 multi-chain OSINT**
 
 All in one toolkit with **auto target detection**, **entity correlation**, styled reports, and a keyboard-driven split-pane TUI.
 
@@ -66,7 +66,7 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 - **Username perms** — name/email local-part permutations  
 - **Image pivots** — reverse-image search URLs  
 - **IOC enrich** — optional VirusTotal / OTX (+ public pivots)  
-- **Crypto / Web3** — BTC/ETH/SOL/TRX wallets, ENS, txs, explorer pivots  
+- **Crypto / Web3** — selectable `evm` bucket + independent chains; ENS; privacy-coin OSINT  
 - **Screenshots** — headless Chrome/Chromium when installed  
 - **Cases + graph** — investigation folders; JSON/GraphML entity graphs  
 - **Plugins** — drop-in `modules/plugins/*.py`  
@@ -80,11 +80,25 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 - **Tor health** check against the SOCKS proxy  
 
 ### Web3 / cryptocurrency
-- **Mainstream:** Bitcoin, Ethereum (+ BSC / Polygon / Avalanche / Base multi-sweep), Solana, TRON, XRP, Cardano, Dogecoin, Litecoin  
-- **Privacy:** Monero, Zcash (t-addr vs shielded), Dash — with honest traceability limits  
-- ENS resolve / reverse; ERC-20 holdings; BTC counterparties; optional Etherscan txs  
-- Sanctions / scam / web-presence pivots; wallet dork packs  
-- Refuses private-key / WIF input · list chains: `--crypto-chains`  
+
+Select **what to query** so you are not sweeping every chain every time:
+
+| Selection | Meaning |
+|-----------|---------|
+| `auto` (default) | Detected chain only — e.g. ETH mainnet for `0x…`, no L2 sweep |
+| `evm` | **One bucket** — all Ethereum-compatible L1/L2s for the same `0x` address |
+| Independent | `bitcoin`, `solana`, `near`, `starknet`, `monero`, … (comma-separated) |
+| `all` | Everything applicable to the address type |
+
+**EVM bucket members:** Ethereum, BSC, Polygon, Avalanche, Base, Arbitrum, Optimism, zkSync, Blast, Metis, Taiko, Boba, Immutable, Astar, Polygon zkEVM  
+
+**Independent groups:** Bitcoin, Solana, TRON, XRP, Cardano, Dogecoin, Litecoin, Dash, Monero, Zcash, NEAR, Starknet, Polkadot, Filecoin, Stacks, Arweave, Celestia, Nervos, Oasis  
+
+**Notes:**
+- ERC-20 / DeFi tokens (UNI, AAVE, …) show under Ethplorer holdings when using Ethereum/`evm`
+- Privacy coins: Monero is pivot-only; Zcash `t-addr` is traceable, shielded is not
+- Refuses private-key / WIF shaped input
+- List groups: `--crypto-chains` · TUI: Web3 menu toggles Auto / EVM / each independent chain
 
 ### Reporting
 - JSON / TXT / HTML / **Markdown** on disk  
@@ -120,7 +134,7 @@ pip install -r requirements.txt
 # Windows: .\setup.ps1 then .\venv\Scripts\Activate.ps1
 ```
 
-Optional: Tor running on `127.0.0.1:9050` for dark-web mode; API keys for Shodan, Censys, HIBP, GitHub (higher rate limits).
+Optional: Tor on `127.0.0.1:9050` for dark-web mode. API keys (optional): Shodan, Censys, HIBP, GitHub, VirusTotal, OTX, Etherscan.
 
 ---
 
@@ -161,11 +175,13 @@ python osint_toolkit.py -t 8.8.8.8 --ip --asn --ioc --vt-key YOUR_KEY
 python osint_toolkit.py -t https://example.com/photo.jpg --meta --image-pivots
 python osint_toolkit.py -t example.com --screenshot --graph --format md
 
-# Web3 / crypto
-python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto
-python osint_toolkit.py -t vitalik.eth --auto
-python osint_toolkit.py -t bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq --crypto --pastes --dorks
-python osint_toolkit.py -t 0xabc... --crypto --etherscan-key YOUR_KEY
+# Web3 / crypto (chain selection)
+python osint_toolkit.py --crypto-chains
+python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto --chains auto
+python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto --chains evm
+python osint_toolkit.py -t vitalik.eth --crypto --chains evm --etherscan-key YOUR_KEY
+python osint_toolkit.py -t root.near --crypto --chains near
+python osint_toolkit.py -t bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq --crypto --chains bitcoin --pastes --dorks
 
 # Cases / batch / plugins
 python osint_toolkit.py --case-create "Op Alpha"
@@ -201,7 +217,7 @@ Modules:
   --ip --asn --phone --ports
   --dorks --buckets --takeover --favicon --meta
   --email-accounts --perms --related --js-secrets
-  --image-pivots --passive-dns --abuse --ioc --crypto --screenshot
+  --image-pivots --passive-dns --abuse --ioc --crypto --crypto-chains --screenshot
   --graph --plugin --list-plugins --tor-check
   --employees --leaks
   --comprehensive-crawl --robots --sitemap
@@ -210,6 +226,7 @@ Modules:
   --case --case-create --case-list --batch
 
 Keys / options:
+  --chains {auto,all,evm,bitcoin,solana,…}   # comma-separated crypto groups
   --github-token --shodan-key --censys-id --censys-secret --hibp-api-key
   --vt-key --otx-key --etherscan-key --rate-limit
   --keywords-file --urlteam-date --max-pages --ports-range --depth
@@ -244,7 +261,15 @@ Run `python osint_toolkit.py --help` for the full list.
 | `host_intel.py` | Shodan / Censys |
 | `employee_intel.py` | Company / HIBP |
 | `dark_web_intel.py` | Onion + Ahmia |
-| `crypto_intel.py` | Web3 wallets / ENS / txs / risk pivots |
+| `crypto_intel.py` | Web3: selectable `evm` + independent chains, ENS, privacy OSINT |
+| `ioc_intel.py` | VT / OTX enrichment |
+| `abuse_intel.py` | DNSBL reputation |
+| `passive_dns.py` | Passive DNS |
+| `js_secrets.py` | JS / page secret mining |
+| `email_accounts.py` | Holehe-style account checks |
+| `related_domains.py` | CT / SSL / same-IP |
+| `cases.py` / `graph_export.py` | Cases + GraphML |
+| `plugins_loader.py` | Drop-in plugins |
 | `correlate.py` | Auto-detect + graph |
 | `tui.py` / `tui_style.py` | Split-pane ASCII UI + styled reports |
 | `report_generator.py` | TXT / HTML / summary |

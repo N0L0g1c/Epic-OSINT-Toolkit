@@ -35,17 +35,33 @@ _ALLOWED_HOSTS = frozenset({
     "api.avax.network",
     "base.publicnode.com",
     "mainnet.base.org",
+    "arbitrum-one.publicnode.com",
+    "optimism.publicnode.com",
+    "mainnet.era.zksync.io",
+    "rpc.blast.io",
+    "andromeda.metis.io",
+    "rpc.mainnet.taiko.xyz",
+    "mainnet.boba.network",
+    "rpc.immutable.com",
+    "evm.astar.network",
+    "zkevm-rpc.com",
     "api.ensideas.com",
     "api.mainnet-beta.solana.com",
     "apilist.tronscanapi.com",
     "api.xrpscan.com",
     "api.koios.rest",
     "api.blockcypher.com",
+    "rpc.mainnet.near.org",
+    "starknet-mainnet.public.blastapi.io",
+    "filecoin.chain.love",
+    "api.hiro.so",
+    "arweave.net",
 })
 
 # ── address / name patterns ───────────────────────────────────────────────────
 _ETH_ADDR = re.compile(r"^0x[a-fA-F0-9]{40}$")
 _ETH_TX = re.compile(r"^0x[a-fA-F0-9]{64}$")
+_STARK_ADDR = re.compile(r"^0x0*[a-fA-F0-9]{1,63}$")  # felt; not 40-hex ETH
 _BTC_ADDR = re.compile(r"^(?:bc1[a-z0-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$")
 _BTC_TX = re.compile(r"^[a-fA-F0-9]{64}$")
 _TRX_ADDR = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
@@ -60,64 +76,120 @@ _DASH_ADDR = re.compile(r"^X[1-9A-HJ-NP-Za-km-z]{33}$")
 _XMR_ADDR = re.compile(r"^[48][0-9AB][1-9A-HJ-NP-Za-km-z]{93}$|^4[0-9AB][1-9A-HJ-NP-Za-km-z]{104}$")
 _ZEC_T = re.compile(r"^t[13][a-km-zA-HJ-NP-Z1-9]{33}$")
 _ZEC_Z = re.compile(r"^(?:zs1[a-z0-9]{70,90}|zc[a-zA-Z0-9]{90,120})$")
+_NEAR_ADDR = re.compile(r"^(?:[a-z0-9_-]{2,64}\.near|[a-f0-9]{64})$", re.I)
+_DOT_ADDR = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{47,48}$")  # SS58 rough
+_FIL_ADDR = re.compile(r"^[ft][0-9][a-z0-9]{10,}$", re.I)
+_STX_ADDR = re.compile(r"^S[PM][A-Z0-9]{38,41}$")
+_AR_ADDR = re.compile(r"^[A-Za-z0-9_-]{43}$")
+_CKB_ADDR = re.compile(r"^ckb1[a-z0-9]{40,120}$")
+_OASIS_ADDR = re.compile(r"^oasis1[a-z0-9]{40,80}$")
+_CELESTIA_ADDR = re.compile(r"^celestia1[a-z0-9]{38,60}$")
 _WIF = re.compile(r"^[5KL][1-9A-HJ-NP-Za-km-z]{50,52}$")
 
-# EVM chains sharing 0x addresses (multi-chain sweep).
+# EVM chains sharing 0x addresses — selected as ONE group: "evm"
 _EVM_RPCS: Dict[str, Dict[str, Any]] = {
     "ethereum": {
-        "rpcs": (
-            "https://ethereum.publicnode.com",
-            "https://1rpc.io/eth",
-            "https://eth.drpc.org",
-            "https://cloudflare-eth.com",
-        ),
-        "symbol": "ETH",
-        "explorer": "https://etherscan.io/address/{addr}",
+        "rpcs": ("https://ethereum.publicnode.com", "https://1rpc.io/eth", "https://eth.drpc.org"),
+        "symbol": "ETH", "explorer": "https://etherscan.io/address/{addr}",
     },
     "bsc": {
-        "rpcs": (
-            "https://bsc.publicnode.com",
-            "https://bsc-dataseed.binance.org",
-            "https://bsc-dataseed1.defibit.io",
-        ),
-        "symbol": "BNB",
-        "explorer": "https://bscscan.com/address/{addr}",
+        "rpcs": ("https://bsc.publicnode.com", "https://bsc-dataseed.binance.org"),
+        "symbol": "BNB", "explorer": "https://bscscan.com/address/{addr}",
     },
     "polygon": {
         "rpcs": ("https://polygon-bor.publicnode.com", "https://polygon-rpc.com"),
-        "symbol": "MATIC",
-        "explorer": "https://polygonscan.com/address/{addr}",
+        "symbol": "MATIC", "explorer": "https://polygonscan.com/address/{addr}",
     },
     "avalanche": {
-        "rpcs": ("https://avalanche-c-chain.publicnode.com", "https://api.avax.network/ext/bc/C/rpc"),
-        "symbol": "AVAX",
-        "explorer": "https://snowtrace.io/address/{addr}",
+        "rpcs": ("https://avalanche-c-chain.publicnode.com",),
+        "symbol": "AVAX", "explorer": "https://snowtrace.io/address/{addr}",
     },
     "base": {
         "rpcs": ("https://base.publicnode.com", "https://mainnet.base.org"),
-        "symbol": "ETH",
-        "explorer": "https://basescan.org/address/{addr}",
+        "symbol": "ETH", "explorer": "https://basescan.org/address/{addr}",
+    },
+    "arbitrum": {
+        "rpcs": ("https://arbitrum-one.publicnode.com",),
+        "symbol": "ETH", "explorer": "https://arbiscan.io/address/{addr}",
+    },
+    "optimism": {
+        "rpcs": ("https://optimism.publicnode.com",),
+        "symbol": "ETH", "explorer": "https://optimistic.etherscan.io/address/{addr}",
+    },
+    "zksync": {
+        "rpcs": ("https://mainnet.era.zksync.io",),
+        "symbol": "ETH", "explorer": "https://explorer.zksync.io/address/{addr}",
+    },
+    "blast": {
+        "rpcs": ("https://rpc.blast.io",),
+        "symbol": "ETH", "explorer": "https://blastscan.io/address/{addr}",
+    },
+    "metis": {
+        "rpcs": ("https://andromeda.metis.io/?owner=1088",),
+        "symbol": "METIS", "explorer": "https://andromeda-explorer.metis.io/address/{addr}",
+    },
+    "taiko": {
+        "rpcs": ("https://rpc.mainnet.taiko.xyz",),
+        "symbol": "ETH", "explorer": "https://taikoscan.io/address/{addr}",
+    },
+    "boba": {
+        "rpcs": ("https://mainnet.boba.network",),
+        "symbol": "ETH", "explorer": "https://bobascan.com/address/{addr}",
+    },
+    "immutable": {
+        "rpcs": ("https://rpc.immutable.com",),
+        "symbol": "IMX", "explorer": "https://explorer.immutable.com/address/{addr}",
+    },
+    "astar": {
+        "rpcs": ("https://evm.astar.network",),
+        "symbol": "ASTR", "explorer": "https://astar.subscan.io/account/{addr}",
+    },
+    "polygon_zkevm": {
+        "rpcs": ("https://zkevm-rpc.com",),
+        "symbol": "ETH", "explorer": "https://zkevm.polygonscan.com/address/{addr}",
     },
 }
 
-# Human-readable catalog for CLI/docs.
-SUPPORTED_CHAINS: Dict[str, Dict[str, str]] = {
-    "bitcoin": {"tier": "full", "family": "utxo", "note": "Balance, txs, counterparties"},
-    "ethereum": {"tier": "full", "family": "evm", "note": "Balance, tokens, ENS, txs (keyed)"},
-    "bsc": {"tier": "balance", "family": "evm", "note": "EVM multi-sweep (BNB Smart Chain)"},
-    "polygon": {"tier": "balance", "family": "evm", "note": "EVM multi-sweep"},
-    "avalanche": {"tier": "balance", "family": "evm", "note": "C-Chain EVM multi-sweep"},
-    "base": {"tier": "balance", "family": "evm", "note": "EVM multi-sweep"},
-    "solana": {"tier": "balance", "family": "solana", "note": "Balance via public RPC"},
-    "tron": {"tier": "full", "family": "tron", "note": "Balance + tx count (Tronscan)"},
-    "xrp": {"tier": "full", "family": "xrp", "note": "Balance + account meta (XRPSCAN)"},
-    "cardano": {"tier": "balance", "family": "cardano", "note": "Balance via Koios"},
-    "dogecoin": {"tier": "balance", "family": "utxo", "note": "Balance via Blockcypher"},
-    "litecoin": {"tier": "balance", "family": "utxo", "note": "Balance via Blockcypher"},
-    "dash": {"tier": "balance", "family": "privacy-lite", "note": "Transparent UTXO; PrivateSend weakens links"},
-    "monero": {"tier": "privacy", "family": "privacy", "note": "Classify + pivots only — not chain-traceable"},
-    "zcash": {"tier": "privacy", "family": "privacy", "note": "t-addr traceable; z-addr shielded"},
+# User-facing selection groups. "evm" = all EVM L1/L2 above as ONE choice.
+CHAIN_GROUPS: Dict[str, Dict[str, Any]] = {
+    "evm": {
+        "label": "EVM (Ethereum + L1/L2s)",
+        "family": "evm",
+        "members": sorted(_EVM_RPCS.keys()),
+        "note": "One 0x address → balances across ETH/BSC/Polygon/Arb/OP/zkSync/Blast/…",
+    },
+    "bitcoin": {"label": "Bitcoin", "family": "utxo", "members": ["bitcoin"], "note": "BTC UTXO"},
+    "solana": {"label": "Solana", "family": "solana", "members": ["solana"], "note": "SOL"},
+    "tron": {"label": "TRON", "family": "tron", "members": ["tron"], "note": "TRX"},
+    "xrp": {"label": "XRP Ledger", "family": "xrp", "members": ["xrp"], "note": "XRP"},
+    "cardano": {"label": "Cardano", "family": "cardano", "members": ["cardano"], "note": "ADA"},
+    "dogecoin": {"label": "Dogecoin", "family": "utxo", "members": ["dogecoin"], "note": "DOGE"},
+    "litecoin": {"label": "Litecoin", "family": "utxo", "members": ["litecoin"], "note": "LTC"},
+    "dash": {"label": "Dash", "family": "privacy-lite", "members": ["dash"], "note": "DASH (+ PrivateSend caveats)"},
+    "monero": {"label": "Monero", "family": "privacy", "members": ["monero"], "note": "XMR — pivots only"},
+    "zcash": {"label": "Zcash", "family": "privacy", "members": ["zcash"], "note": "ZEC t-addr / shielded"},
+    "near": {"label": "NEAR Protocol", "family": "near", "members": ["near"], "note": "NEAR"},
+    "starknet": {"label": "Starknet", "family": "starknet", "members": ["starknet"], "note": "STRK / Cairo (not EVM)"},
+    "polkadot": {"label": "Polkadot", "family": "substrate", "members": ["polkadot"], "note": "DOT — explorer pivots"},
+    "filecoin": {"label": "Filecoin", "family": "filecoin", "members": ["filecoin"], "note": "FIL"},
+    "stacks": {"label": "Stacks", "family": "stacks", "members": ["stacks"], "note": "STX (Bitcoin L2)"},
+    "arweave": {"label": "Arweave", "family": "arweave", "members": ["arweave"], "note": "AR"},
+    "celestia": {"label": "Celestia", "family": "cosmos", "members": ["celestia"], "note": "TIA — explorer pivots"},
+    "nervos": {"label": "Nervos / CKB", "family": "nervos", "members": ["nervos"], "note": "CKB — explorer pivots"},
+    "oasis": {"label": "Oasis", "family": "oasis", "members": ["oasis"], "note": "ROSE — explorer pivots"},
 }
+
+# Image tokens that live on EVM — covered when "evm" is selected (ERC-20 via Ethplorer).
+ERC20_VIA_EVM = (
+    "UNI", "AAVE", "WLD", "1INCH", "YFI", "ZRX", "SUSHI", "UMA", "OXT",
+    "IMX", "LRC", "CTSI", "PHA", "METIS", "ARB", "OP", "STRK", "BLAST", "TAIKO",
+)
+
+# Flat chain → group for auto matching
+_CHAIN_TO_GROUP = {
+    m: g for g, meta in CHAIN_GROUPS.items() for m in meta["members"]
+}
+_CHAIN_TO_GROUP.update({"ethereum": "evm", **{k: "evm" for k in _EVM_RPCS}})
 
 
 class CryptoIntel:
@@ -129,8 +201,56 @@ class CryptoIntel:
         self.session.headers.update(rotate_headers({"Accept": "application/json"}))
 
     @staticmethod
-    def supported() -> Dict[str, Dict[str, str]]:
-        return dict(SUPPORTED_CHAINS)
+    def supported() -> Dict[str, Dict[str, Any]]:
+        """Return selectable groups (evm = one bucket) + ERC-20 notes."""
+        out = {k: dict(v) for k, v in CHAIN_GROUPS.items()}
+        out["_erc20_via_evm"] = {
+            "label": "ERC-20 tokens (via evm)",
+            "members": list(ERC20_VIA_EVM),
+            "note": "UNI/AAVE/… appear in Ethplorer token holdings when EVM is selected",
+        }
+        return out
+
+    @staticmethod
+    def group_ids() -> List[str]:
+        return sorted(CHAIN_GROUPS.keys())
+
+    @classmethod
+    def normalize_selection(cls, chains: Any) -> List[str]:
+        """Parse chains option → list of group ids. Default: ['auto']."""
+        if chains is None or chains == "" or chains == []:
+            return ["auto"]
+        if isinstance(chains, str):
+            parts = [p.strip().lower() for p in chains.replace(";", ",").split(",") if p.strip()]
+        elif isinstance(chains, (list, tuple, set)):
+            parts = [str(p).strip().lower() for p in chains if str(p).strip()]
+        else:
+            return ["auto"]
+        if not parts:
+            return ["auto"]
+        if "all" in parts:
+            return ["all"]
+        valid = set(CHAIN_GROUPS) | {"auto", "all"}
+        # Map legacy chain names (ethereum → evm, btc → bitcoin)
+        aliases = {
+            "eth": "evm", "ethereum": "evm", "l2": "evm", "btc": "bitcoin",
+            "sol": "solana", "ada": "cardano", "dot": "polkadot", "fil": "filecoin",
+            "stx": "stacks", "ar": "arweave", "xmr": "monero", "zec": "zcash",
+            "tia": "celestia", "ckb": "nervos", "rose": "oasis", "strk": "starknet",
+        }
+        out: List[str] = []
+        for p in parts:
+            p = aliases.get(p, p)
+            if p in valid and p not in out:
+                out.append(p)
+        return out or ["auto"]
+
+    def _selection_allows(self, selected: List[str], group: str) -> bool:
+        if "all" in selected:
+            return True
+        if "auto" in selected:
+            return True  # auto applies native group only (caller gates)
+        return group in selected
 
     def analyze(self, target: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         opts = options or {}
@@ -144,13 +264,20 @@ class CryptoIntel:
                 "hint": "Only pass public addresses, ENS names, or tx hashes",
             }
 
+        selected = self.normalize_selection(opts.get("chains"))
         kind, chain = self.classify(raw)
+        native_group = _CHAIN_TO_GROUP.get(chain, chain)
         out: Dict[str, Any] = {
             "target": raw,
             "kind": kind,
             "chain": chain,
+            "native_group": native_group,
             "normalized": raw,
-            "supported_chains": sorted(SUPPORTED_CHAINS.keys()),
+            "selection": {
+                "requested": selected,
+                "hint": "Use chains=evm for all EVM L1/L2; or bitcoin,solana,… independently. Default auto = detected chain only.",
+            },
+            "groups_available": self.group_ids(),
         }
 
         if kind == "unknown":
@@ -163,14 +290,37 @@ class CryptoIntel:
             out["pivots"] = self._generic_pivots(raw)
             return out
 
+        # Selection gate (auto → only native group; explicit must include native or all)
+        if "auto" not in selected and "all" not in selected:
+            if native_group not in selected and not (
+                chain in _EVM_RPCS and "evm" in selected
+            ):
+                out["skipped"] = True
+                out["reason"] = (
+                    f"Address is {native_group}/{chain} but selection={selected}. "
+                    f"Add '{native_group}' (or 'all') to --chains."
+                )
+                out["pivots"] = self._pivots(raw, chain)
+                return out
+
         if kind == "ens":
+            if not self._selection_allows(selected, "evm") and "auto" not in selected and "all" not in selected:
+                out["skipped"] = True
+                out["reason"] = "ENS requires evm selection"
+                return out
             resolved = self._resolve_ens(raw)
             out["ens"] = resolved
             addr = (resolved or {}).get("address")
             if addr and _ETH_ADDR.match(addr):
                 out["normalized"] = addr
                 out["ethereum"] = self._eth_address(addr, opts)
-                out["evm_activity"] = self._evm_multichain(addr, skip=("ethereum",))
+                if "evm" in selected or "all" in selected:
+                    out["evm_activity"] = self._evm_multichain(addr, skip=("ethereum",))
+                elif "auto" in selected:
+                    out["evm_activity"] = {
+                        "note": "Skipped multi-EVM sweep (default auto). Pass chains=evm to scan all EVM L2s.",
+                        "active_chains": [],
+                    }
             out["pivots"] = self._pivots(addr or raw, "ethereum")
             out["risk"] = self._risk_pivots(addr or raw)
             return out
@@ -180,7 +330,9 @@ class CryptoIntel:
             out["pivots"] = self._tx_pivots(raw, chain)
             return out
 
-        # Address dispatch
+        # Address dispatch — only run matching handlers
+        run_evm_sweep = "evm" in selected or "all" in selected
+
         if chain == "bitcoin":
             out["bitcoin"] = self._btc_address(raw)
         elif chain == "ethereum":
@@ -188,7 +340,13 @@ class CryptoIntel:
             ens = self._reverse_ens(raw)
             if ens:
                 out["ens"] = ens
-            out["evm_activity"] = self._evm_multichain(raw, skip=("ethereum",))
+            if run_evm_sweep:
+                out["evm_activity"] = self._evm_multichain(raw, skip=("ethereum",))
+            else:
+                out["evm_activity"] = {
+                    "note": "Skipped multi-EVM sweep. Pass --chains evm to query Arb/OP/zkSync/Blast/…",
+                    "active_chains": [],
+                }
         elif chain == "solana":
             out["solana"] = self._sol_address(raw)
         elif chain == "tron":
@@ -209,6 +367,22 @@ class CryptoIntel:
         elif chain == "zcash":
             out["zcash"] = self._zcash_address(raw)
             out["privacy"] = self._privacy_profile("zcash", raw)
+        elif chain == "near":
+            out["near"] = self._near_address(raw)
+        elif chain == "starknet":
+            out["starknet"] = self._starknet_address(raw)
+        elif chain == "filecoin":
+            out["filecoin"] = self._filecoin_address(raw)
+        elif chain == "stacks":
+            out["stacks"] = self._stacks_address(raw)
+        elif chain == "arweave":
+            out["arweave"] = self._arweave_address(raw)
+        elif chain in ("polkadot", "celestia", "nervos", "oasis"):
+            out[chain] = {
+                "address": raw,
+                "note": "Explorer pivots only (no free balance API wired)",
+                "source": "local",
+            }
         else:
             out["note"] = f"Detected {chain}; explorer pivots only"
 
@@ -227,14 +401,27 @@ class CryptoIntel:
             return "tx", "ethereum"
         if _ETH_ADDR.match(t):
             return "address", "ethereum"
+        # Starknet: 0x + not exactly 40 hex (felt)
+        if t.startswith("0x") and _STARK_ADDR.match(t) and not _ETH_ADDR.match(t) and not _ETH_TX.match(t):
+            return "address", "starknet"
         if _XMR_ADDR.match(t):
             return "address", "monero"
-        if _ZEC_Z.match(t):
-            return "address", "zcash"
-        if _ZEC_T.match(t):
+        if _ZEC_Z.match(t) or _ZEC_T.match(t):
             return "address", "zcash"
         if _ADA_ADDR.match(t) or _ADA_STAKE.match(t):
             return "address", "cardano"
+        if _NEAR_ADDR.match(t) and (t.endswith(".near") or (len(t) == 64 and all(c in "0123456789abcdefABCDEF" for c in t))):
+            return "address", "near"
+        if _CELESTIA_ADDR.match(t):
+            return "address", "celestia"
+        if _CKB_ADDR.match(t):
+            return "address", "nervos"
+        if _OASIS_ADDR.match(t):
+            return "address", "oasis"
+        if _FIL_ADDR.match(t):
+            return "address", "filecoin"
+        if _STX_ADDR.match(t):
+            return "address", "stacks"
         if _XRP_ADDR.match(t):
             return "address", "xrp"
         if _TRX_ADDR.match(t):
@@ -249,6 +436,12 @@ class CryptoIntel:
             return "address", "litecoin"
         if _BTC_TX.match(t):
             return "tx", "bitcoin"
+        if _AR_ADDR.match(t) and not _SOL_ADDR.match(t):
+            return "address", "arweave"
+        if _DOT_ADDR.match(t) and not _SOL_ADDR.match(t) and not _BTC_ADDR.match(t):
+            # SS58 overlaps Solana base58 — prefer sol if 32-44 and not 47-48
+            if len(t) >= 47:
+                return "address", "polkadot"
         if _SOL_ADDR.match(t) and not _BTC_ADDR.match(t) and not _LTC_ADDR.match(t):
             return "address", "solana"
         return "unknown", "unknown"
@@ -651,6 +844,115 @@ class CryptoIntel:
             out["error"] = bal["error"]
         return out
 
+    def _near_address(self, addr: str) -> Dict[str, Any]:
+        data = self._post_json(
+            "https://rpc.mainnet.near.org",
+            {
+                "jsonrpc": "2.0",
+                "id": "osint",
+                "method": "query",
+                "params": {"request_type": "view_account", "finality": "final", "account_id": addr},
+            },
+        )
+        if not isinstance(data, dict):
+            return {"error": "NEAR RPC failed"}
+        if data.get("error"):
+            return {"address": addr, "error": data["error"], "source": "near-rpc"}
+        res = data.get("result") or {}
+        amt = res.get("amount")
+        try:
+            near = int(amt) / 1e24 if amt is not None else None
+        except (TypeError, ValueError):
+            near = None
+        return {
+            "address": addr,
+            "balance_near": near,
+            "storage_usage": res.get("storage_usage"),
+            "source": "near-rpc",
+        }
+
+    def _starknet_address(self, addr: str) -> Dict[str, Any]:
+        # Starknet JSON-RPC starknet_getBalance / getNonce variants differ by node.
+        data = self._post_json(
+            "https://starknet-mainnet.public.blastapi.io",
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_getNonce",
+                "params": {"block_id": "latest", "contract_address": addr},
+            },
+        )
+        out: Dict[str, Any] = {
+            "address": addr,
+            "note": "Starknet is not EVM — select starknet independently from evm",
+            "source": "starknet-rpc",
+        }
+        if isinstance(data, dict) and "result" in data:
+            out["nonce"] = data.get("result")
+            out["active"] = True
+        elif isinstance(data, dict) and data.get("error"):
+            out["error"] = data.get("error")
+        return out
+
+    def _filecoin_address(self, addr: str) -> Dict[str, Any]:
+        data = self._post_json(
+            "https://filecoin.chain.love/rpc/v1",
+            {"jsonrpc": "2.0", "id": 1, "method": "Filecoin.WalletBalance", "params": [addr]},
+        )
+        if not isinstance(data, dict):
+            return {"error": "Filecoin RPC failed"}
+        if "result" in data:
+            try:
+                atto = int(data["result"])
+                fil = atto / 1e18
+            except (TypeError, ValueError):
+                atto, fil = None, None
+            return {"address": addr, "balance_fil": fil, "balance_attofil": atto, "source": "filecoin-rpc"}
+        return {"address": addr, "error": data.get("error") or "lookup failed", "source": "filecoin-rpc"}
+
+    def _stacks_address(self, addr: str) -> Dict[str, Any]:
+        data = self._get_json(f"https://api.hiro.so/extended/v1/address/{quote(addr, safe='')}/stx")
+        if not isinstance(data, dict) or data.get("error"):
+            return data if isinstance(data, dict) else {"error": "Stacks lookup failed"}
+        bal = data.get("balance")
+        try:
+            stx = int(bal) / 1e6 if bal is not None else None
+        except (TypeError, ValueError):
+            stx = None
+        return {
+            "address": addr,
+            "balance_stx": stx,
+            "total_sent": data.get("total_sent"),
+            "total_received": data.get("total_received"),
+            "source": "hiro",
+        }
+
+    def _arweave_address(self, addr: str) -> Dict[str, Any]:
+        data = self._get_json(f"https://arweave.net/wallet/{quote(addr, safe='')}/balance")
+        # arweave returns plain winston integer as body — _get_json may fail
+        if isinstance(data, dict) and data.get("error"):
+            # retry as text
+            if not self._host_ok("https://arweave.net/"):
+                return data
+            try:
+                pace()
+                r = self.session.get(
+                    f"https://arweave.net/wallet/{quote(addr, safe='')}/balance",
+                    timeout=20,
+                )
+                if r.status_code != 200:
+                    return {"error": f"HTTP {r.status_code}"}
+                winston = int(r.text.strip())
+                return {
+                    "address": addr,
+                    "balance_winston": winston,
+                    "balance_ar": round(winston / 1e12, 8),
+                    "source": "arweave.net",
+                }
+            except (requests.RequestException, ValueError) as exc:
+                return {"error": str(exc)}
+        return {"address": addr, "raw": data, "source": "arweave.net"}
+
     def _trx_address(self, addr: str) -> Dict[str, Any]:
         data = self._get_json(
             f"https://apilist.tronscanapi.com/api/account?address={quote(addr, safe='')}"
@@ -822,31 +1124,33 @@ class CryptoIntel:
             "bitcoin": [
                 {"name": "Mempool.space", "url": f"https://mempool.space/address/{q}"},
                 {"name": "Blockstream", "url": f"https://blockstream.info/address/{q}"},
-                {"name": "OXT", "url": f"https://oxt.me/address/{q}"},
             ],
             "ethereum": [
                 {"name": "Etherscan", "url": f"https://etherscan.io/address/{q}"},
                 {"name": "Debank", "url": f"https://debank.com/profile/{q}"},
-                {"name": "BscScan", "url": f"https://bscscan.com/address/{q}"},
-                {"name": "Polygonscan", "url": f"https://polygonscan.com/address/{q}"},
-                {"name": "Snowtrace", "url": f"https://snowtrace.io/address/{q}"},
-                {"name": "Basescan", "url": f"https://basescan.org/address/{q}"},
+                {"name": "Arbiscan", "url": f"https://arbiscan.io/address/{q}"},
+                {"name": "Optimistic", "url": f"https://optimistic.etherscan.io/address/{q}"},
+                {"name": "zkSync", "url": f"https://explorer.zksync.io/address/{q}"},
+                {"name": "Blastscan", "url": f"https://blastscan.io/address/{q}"},
             ],
-            "solana": [
-                {"name": "Solscan", "url": f"https://solscan.io/account/{q}"},
-            ],
+            "solana": [{"name": "Solscan", "url": f"https://solscan.io/account/{q}"}],
             "tron": [{"name": "Tronscan", "url": f"https://tronscan.org/#/address/{q}"}],
             "xrp": [{"name": "XRPSCAN", "url": f"https://xrpscan.com/account/{q}"}],
             "cardano": [{"name": "Cardanoscan", "url": f"https://cardanoscan.io/address/{q}"}],
             "dogecoin": [{"name": "Blockchair DOGE", "url": f"https://blockchair.com/dogecoin/address/{q}"}],
             "litecoin": [{"name": "Blockchair LTC", "url": f"https://blockchair.com/litecoin/address/{q}"}],
             "dash": [{"name": "Blockchair DASH", "url": f"https://blockchair.com/dash/address/{q}"}],
-            "monero": [
-                {"name": "XMRChain", "url": f"https://xmrchain.net/search?value={q}"},
-            ],
-            "zcash": [
-                {"name": "ZcashBlockExplorer", "url": f"https://zcashblockexplorer.com/address/{q}"},
-            ],
+            "monero": [{"name": "XMRChain", "url": f"https://xmrchain.net/search?value={q}"}],
+            "zcash": [{"name": "ZcashBlockExplorer", "url": f"https://zcashblockexplorer.com/address/{q}"}],
+            "near": [{"name": "NEAR Explorer", "url": f"https://nearblocks.io/address/{q}"}],
+            "starknet": [{"name": "Voyager", "url": f"https://voyager.online/contract/{q}"}],
+            "polkadot": [{"name": "Subscan", "url": f"https://polkadot.subscan.io/account/{q}"}],
+            "filecoin": [{"name": "Filfox", "url": f"https://filfox.info/en/address/{q}"}],
+            "stacks": [{"name": "Explorer", "url": f"https://explorer.hiro.so/address/{q}?chain=mainnet"}],
+            "arweave": [{"name": "ViewBlock", "url": f"https://viewblock.io/arweave/address/{q}"}],
+            "celestia": [{"name": "Celestia Explorer", "url": f"https://celenium.io/address/{q}"}],
+            "nervos": [{"name": "CKB Explorer", "url": f"https://explorer.nervos.org/address/{q}"}],
+            "oasis": [{"name": "Oasis Scan", "url": f"https://www.oasisscan.com/accounts/detail/{q}"}],
         }
         return (table.get(chain) or []) + common
 
