@@ -222,4 +222,6 @@ Use only on targets you are authorized to investigate. Respect laws, ToS, and ra
 
 ## License
 
-See repository license file if present; otherwise use responsibly for legitimate security research.
+MIT License © 2026 [N0L0g1c](https://github.com/N0L0g1c) — see [LICENSE](LICENSE).
+
+You may use, copy, modify, and distribute this software freely, including commercially, as long as you keep the copyright notice and license text. No warranty is provided; use responsibly and only on targets you are authorized to investigate.
