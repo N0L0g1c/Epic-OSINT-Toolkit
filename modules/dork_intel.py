@@ -22,6 +22,7 @@ class DorkIntel:
             "ip": self._ip_dorks,
             "company": self._company_dorks,
             "phone": self._phone_dorks,
+            "wallet": self._wallet_dorks,
         }
         builder = packs.get(kind, self._domain_dorks)
         categories = builder(t)
@@ -47,6 +48,14 @@ class DorkIntel:
     def _guess(t: str) -> str:
         if "@" in t:
             return "email"
+        if t.endswith(".eth") or t.startswith("0x") or t.startswith(("bc1", "1", "3", "T")) and len(t) >= 26:
+            # Heuristic — correlate.detect is authoritative for CLI auto
+            if t.endswith(".eth") or (t.startswith("0x") and len(t) in (42, 66)):
+                return "wallet"
+            if t.startswith(("bc1", "1", "3")) and 26 <= len(t) <= 90:
+                return "wallet"
+            if t.startswith("T") and len(t) == 34:
+                return "wallet"
         if t.replace(".", "").isdigit() or ":" in t:
             return "ip"
         if t.startswith("+") or (t.isdigit() and len(t) >= 8):
@@ -138,5 +147,28 @@ class DorkIntel:
             "presence": [
                 f'"{p}" OR "{bare}"',
                 f'"{p}" name OR address OR email',
+            ],
+        }
+
+    def _wallet_dorks(self, w: str) -> Dict[str, List[str]]:
+        return {
+            "presence": [
+                f'"{w}"',
+                f'"{w}" wallet OR address OR crypto OR bitcoin OR ethereum',
+                f'"{w}" site:twitter.com OR site:x.com OR site:reddit.com',
+            ],
+            "leaks": [
+                f'"{w}" site:pastebin.com OR site:ghostbin.com OR site:gist.github.com',
+                f'"{w}" site:github.com',
+                f'"{w}" private key OR seed OR mnemonic OR "begins with"',
+            ],
+            "scam_abuse": [
+                f'"{w}" scam OR phishing OR hack OR stolen OR ransomware',
+                f'"{w}" site:chainabuse.com OR site:bitcoinabuse.com',
+                f'"{w}" OFAC OR sanctions OR tumbler OR mixer',
+            ],
+            "attribution": [
+                f'"{w}" exchange OR binance OR coinbase OR kraken OR deposit',
+                f'"{w}" ENS OR "vitalik" OR opensea OR nft',
             ],
         }

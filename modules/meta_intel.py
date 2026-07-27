@@ -80,17 +80,52 @@ class MetaIntel:
         if not data:
             return {"error": "No data"}
 
-        exif = self._parse_jpeg_exif(data)
+        kind = self._sniff(data)
         result: Dict[str, Any] = {
             "source": source,
             "size": len(data),
-            "type": self._sniff(data),
-            "exif": exif or {},
-            "gps": self._gps_from_exif(exif) if exif else None,
+            "type": kind,
+            "exif": {},
+            "gps": None,
+            "document": {},
         }
-        if not exif:
-            result["note"] = "No EXIF found (non-JPEG or stripped)"
+        if kind == "jpeg":
+            exif = self._parse_jpeg_exif(data)
+            result["exif"] = exif or {}
+            result["gps"] = self._gps_from_exif(exif) if exif else None
+            if not exif:
+                result["note"] = "No EXIF found (stripped)"
+        elif kind == "pdf":
+            result["document"] = self._parse_pdf_info(data)
+            if not result["document"]:
+                result["note"] = "No PDF Info dictionary found"
+        else:
+            result["note"] = f"Limited parsing for type={kind}"
         return result
+
+    @staticmethod
+    def _parse_pdf_info(data: bytes) -> Dict[str, Any]:
+        """Extract common /Info << ... >> metadata from PDF bytes."""
+        import re
+        text = data[:200_000].decode("latin-1", errors="ignore")
+        info: Dict[str, Any] = {}
+        # Author/Title/Creator/Producer/CreationDate
+        for key in ("Title", "Author", "Subject", "Creator", "Producer", "CreationDate", "ModDate", "Keywords"):
+            m = re.search(rf"/{key}\s*\((.*?)\)", text)
+            if m:
+                info[key] = m.group(1)[:200]
+            else:
+                m = re.search(rf"/{key}\s*<([0-9A-Fa-f]+)>", text)
+                if m:
+                    try:
+                        info[key] = bytes.fromhex(m.group(1)).decode("utf-8", errors="replace")[:200]
+                    except ValueError:
+                        info[key] = m.group(1)[:200]
+        # absolute paths sometimes leak
+        paths = re.findall(r"[A-Z]:\\\\[^\n\r()]{5,120}|/Users/[^\n\r()]{3,120}|/home/[^\n\r()]{3,120}", text)
+        if paths:
+            info["leaked_paths"] = list(dict.fromkeys(paths))[:10]
+        return info
 
     @staticmethod
     def _sniff(data: bytes) -> str:

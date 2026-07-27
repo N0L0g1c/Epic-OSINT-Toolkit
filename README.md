@@ -21,8 +21,8 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 ## Features
 
 ### Auto-detect & correlation
-- Detect domain, IP, email, phone, username, URL, onion, or company
-- Correlate emails, domains, IPs, usernames, and URLs across modules
+- Detect domain, IP, email, phone, username, URL, onion, company, or **wallet**
+- Correlate emails, domains, IPs, usernames, URLs, and wallets across modules
 
 ### Interactive TUI
 - Full-terminal layout: **module menu on the left**, feature pane on the right (wide terminals)
@@ -57,7 +57,19 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 - **Cloud buckets** — S3, GCS, Azure Blob, DigitalOcean Spaces probes  
 - **Takeover checks** — dangling DNS + service fingerprints  
 - **Favicon mmh3** — Shodan `http.favicon.hash` pivot  
-- **EXIF / metadata** — JPEG EXIF (+ GPS maps link) from URL or local file  
+- **EXIF / metadata** — JPEG EXIF (+ GPS) and light PDF Info from URL or local file  
+- **Related domains** — CT SANs, live SSL SANs, same-IP neighbors  
+- **Passive DNS** — historical host/IP pivots  
+- **Abuse / DNSBL** — reputation list checks  
+- **JS secrets** — page/JS key & API-path mining  
+- **Email accounts** — Holehe-style registration probes  
+- **Username perms** — name/email local-part permutations  
+- **Image pivots** — reverse-image search URLs  
+- **IOC enrich** — optional VirusTotal / OTX (+ public pivots)  
+- **Crypto / Web3** — BTC/ETH/SOL/TRX wallets, ENS, txs, explorer pivots  
+- **Screenshots** — headless Chrome/Chromium when installed  
+- **Cases + graph** — investigation folders; JSON/GraphML entity graphs  
+- **Plugins** — drop-in `modules/plugins/*.py`  
 
 ### Email, phone, ports, company, dark web
 - Email discover / MX + SMTP RCPT verify / sources  
@@ -65,10 +77,19 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 - Port scan + banners (+ optional nmap)  
 - Employees (GitHub/GitLab/website) + HIBP leaks  
 - .onion analyze/crawl + **Ahmia** directory search (Tor optional)  
+- **Tor health** check against the SOCKS proxy  
+
+### Web3 / cryptocurrency
+- **Mainstream:** Bitcoin, Ethereum (+ BSC / Polygon / Avalanche / Base multi-sweep), Solana, TRON, XRP, Cardano, Dogecoin, Litecoin  
+- **Privacy:** Monero, Zcash (t-addr vs shielded), Dash — with honest traceability limits  
+- ENS resolve / reverse; ERC-20 holdings; BTC counterparties; optional Etherscan txs  
+- Sanctions / scam / web-presence pivots; wallet dork packs  
+- Refuses private-key / WIF input · list chains: `--crypto-chains`  
 
 ### Reporting
-- JSON / TXT / HTML on disk  
+- JSON / TXT / HTML / **Markdown** on disk  
 - TUI shows a colorized, sectioned intel report derived from the same data  
+- Soft **rate-limit** + rotating User-Agents for polite probing  
 
 ---
 
@@ -134,9 +155,25 @@ python osint_toolkit.py -t example.com --dns --subdomains --emails --ports
 
 # New recon modules
 python osint_toolkit.py -t example.com --dorks --buckets --takeover --favicon
-python osint_toolkit.py -t 8.8.8.8 --ip --asn
-python osint_toolkit.py -t https://example.com/photo.jpg --meta
-python osint_toolkit.py -t example.com --wayback --pastes
+python osint_toolkit.py -t example.com --related --passive-dns --js-secrets --abuse
+python osint_toolkit.py -t user@example.com --email-accounts --perms
+python osint_toolkit.py -t 8.8.8.8 --ip --asn --ioc --vt-key YOUR_KEY
+python osint_toolkit.py -t https://example.com/photo.jpg --meta --image-pivots
+python osint_toolkit.py -t example.com --screenshot --graph --format md
+
+# Web3 / crypto
+python osint_toolkit.py -t 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 --crypto
+python osint_toolkit.py -t vitalik.eth --auto
+python osint_toolkit.py -t bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq --crypto --pastes --dorks
+python osint_toolkit.py -t 0xabc... --crypto --etherscan-key YOUR_KEY
+
+# Cases / batch / plugins
+python osint_toolkit.py --case-create "Op Alpha"
+python osint_toolkit.py -t example.com --auto --case CASE_ID
+python osint_toolkit.py --batch targets.txt --format json
+python osint_toolkit.py --list-plugins
+python osint_toolkit.py -t example.com --plugin example_echo
+python osint_toolkit.py --tor-check --tor
 
 # People / company
 python osint_toolkit.py -t johndoe --type username --social --github
@@ -154,7 +191,7 @@ python osint_toolkit.py -t example.com --full --format html -o reports
 ```
 -t / --target TARGET
 --tui
---type {domain,username,ip,url,company,onion,phone,email,auto}
+--type {domain,username,ip,url,company,onion,phone,email,wallet,auto}
 --full · --auto
 
 Modules:
@@ -163,15 +200,20 @@ Modules:
   --urls --urlteam --wayback --pastes
   --ip --asn --phone --ports
   --dorks --buckets --takeover --favicon --meta
+  --email-accounts --perms --related --js-secrets
+  --image-pivots --passive-dns --abuse --ioc --crypto --screenshot
+  --graph --plugin --list-plugins --tor-check
   --employees --leaks
   --comprehensive-crawl --robots --sitemap
   --dark-web --onion-search --tor
   --shodan --censys --correlate
+  --case --case-create --case-list --batch
 
 Keys / options:
   --github-token --shodan-key --censys-id --censys-secret --hibp-api-key
+  --vt-key --otx-key --etherscan-key --rate-limit
   --keywords-file --urlteam-date --max-pages --ports-range --depth
-  -o/--output -f/--format {json,txt,html} --quiet
+  -o/--output -f/--format {json,txt,html,md} --quiet
 ```
 
 Run `python osint_toolkit.py --help` for the full list.
@@ -202,6 +244,7 @@ Run `python osint_toolkit.py --help` for the full list.
 | `host_intel.py` | Shodan / Censys |
 | `employee_intel.py` | Company / HIBP |
 | `dark_web_intel.py` | Onion + Ahmia |
+| `crypto_intel.py` | Web3 wallets / ENS / txs / risk pivots |
 | `correlate.py` | Auto-detect + graph |
 | `tui.py` / `tui_style.py` | Split-pane ASCII UI + styled reports |
 | `report_generator.py` | TXT / HTML / summary |

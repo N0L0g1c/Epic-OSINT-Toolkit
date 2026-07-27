@@ -39,6 +39,33 @@ class DarkWebIntel:
                 print(f"  [!] Error configuring Tor: {e}")
                 self.use_tor = False
     
+    def tor_health(self) -> Dict:
+        """Check whether Tor SOCKS proxy is reachable."""
+        result = {
+            "configured": self.use_tor,
+            "proxy": self.tor_proxy,
+            "reachable": False,
+            "exit_ip": None,
+            "error": None,
+        }
+        if not self.use_tor:
+            result["error"] = "Tor not enabled"
+            return result
+        try:
+            # check.torproject.org returns confirmation page
+            r = self.session.get("https://check.torproject.org/api/ip", timeout=20)
+            if r.status_code == 200:
+                data = r.json()
+                result["reachable"] = bool(data.get("IsTor"))
+                result["exit_ip"] = data.get("IP")
+                if not result["reachable"]:
+                    result["error"] = "Proxy reachable but not Tor exit"
+            else:
+                result["error"] = f"HTTP {r.status_code}"
+        except Exception as exc:
+            result["error"] = str(exc)
+        return result
+
     def crawl_onion(self, onion_url: str, max_depth: int = 2, max_pages: int = 50) -> Dict:
         """Crawl .onion domain"""
         if not onion_url.startswith('http'):

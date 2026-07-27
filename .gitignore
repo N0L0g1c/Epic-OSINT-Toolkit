@@ -39,6 +39,7 @@ Thumbs.db
 
 # Reports (generated scan output)
 reports/
+cases/
 
 # Logs
 *.log

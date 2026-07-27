@@ -33,6 +33,20 @@ from modules.bucket_intel import BucketIntel
 from modules.takeover_intel import TakeoverIntel
 from modules.favicon_intel import FaviconIntel
 from modules.meta_intel import MetaIntel
+from modules.email_accounts import EmailAccountsIntel
+from modules.username_perm import UsernamePermIntel
+from modules.related_domains import RelatedDomainsIntel
+from modules.cases import CaseManager
+from modules.graph_export import GraphExport
+from modules.js_secrets import JSSecretsIntel
+from modules.image_pivot import ImagePivotIntel
+from modules.passive_dns import PassiveDNSIntel
+from modules.abuse_intel import AbuseIntel
+from modules.ioc_intel import IOCIntel
+from modules.screenshot_intel import ScreenshotIntel
+from modules.crypto_intel import CryptoIntel
+from modules.plugins_loader import PluginLoader
+from modules.http_util import set_rate_limit
 
 
 class OSINTToolkit:
@@ -40,12 +54,16 @@ class OSINTToolkit:
     
     def __init__(self, output_dir: str = "reports", github_token: Optional[str] = None,
                  shodan_key: Optional[str] = None, censys_id: Optional[str] = None,
-                 censys_secret: Optional[str] = None):
+                 censys_secret: Optional[str] = None, vt_key: Optional[str] = None,
+                 otx_key: Optional[str] = None, etherscan_key: Optional[str] = None,
+                 rate_limit: float = 0.0):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.results = {}
         self.github_token = github_token
+        if rate_limit and rate_limit > 0:
+            set_rate_limit(rate_limit)
         
         # Initialize modules
         self.domain_intel = DomainIntel()
@@ -68,6 +86,19 @@ class OSINTToolkit:
         self.takeover_intel = TakeoverIntel()
         self.favicon_intel = FaviconIntel()
         self.meta_intel = MetaIntel()
+        self.email_accounts = EmailAccountsIntel()
+        self.username_perm = UsernamePermIntel()
+        self.related_domains = RelatedDomainsIntel()
+        self.cases = CaseManager()
+        self.graph_export = GraphExport()
+        self.js_secrets = JSSecretsIntel()
+        self.image_pivot = ImagePivotIntel()
+        self.passive_dns = PassiveDNSIntel()
+        self.abuse_intel = AbuseIntel()
+        self.ioc_intel = IOCIntel(vt_key=vt_key, otx_key=otx_key)
+        self.screenshot_intel = ScreenshotIntel()
+        self.crypto_intel = CryptoIntel(etherscan_key=etherscan_key)
+        self.plugins = PluginLoader()
         self.correlator = Correlator()
         self.report_gen = ReportGenerator()
     
@@ -418,6 +449,68 @@ class OSINTToolkit:
         print(f"\n[+] Metadata / EXIF: {target}")
         return self.meta_intel.analyze(target)
 
+    def check_email_accounts(self, email: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Email account check: {email}")
+        return self.email_accounts.check(email)
+
+    def generate_username_perms(self, seed: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Username permutations: {seed}")
+        opts = options or {}
+        return self.username_perm.generate(seed, years=opts.get("years", True), limit=int(opts.get("limit", 80)))
+
+    def find_related_domains(self, domain: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Related domains: {domain}")
+        return self.related_domains.find(domain)
+
+    def mine_js_secrets(self, url: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] JS / page secrets: {url}")
+        return self.js_secrets.mine(url)
+
+    def image_pivots(self, target: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Reverse-image pivots: {target}")
+        return self.image_pivot.pivots(target)
+
+    def lookup_passive_dns(self, target: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Passive DNS: {target}")
+        return self.passive_dns.lookup(target)
+
+    def check_abuse(self, ip_or_host: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Abuse / DNSBL: {ip_or_host}")
+        return self.abuse_intel.check(ip_or_host)
+
+    def enrich_ioc(self, indicator: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] IOC enrichment: {indicator}")
+        return self.ioc_intel.enrich(indicator)
+
+    def analyze_crypto(self, target: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Web3 / crypto intel: {target}")
+        return self.crypto_intel.analyze(target, options)
+
+    def capture_screenshot(self, url: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Screenshot: {url}")
+        out = (options or {}).get("output_dir") or str(self.output_dir / "screenshots")
+        return self.screenshot_intel.capture(url, output_dir=out)
+
+    def export_graph(self, results: Dict, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print("\n[+] Exporting investigation graph...")
+        graph = self.graph_export.from_results(results)
+        opts = options or {}
+        base = self.output_dir / f"graph_{self.timestamp}"
+        out = {"graph": graph, "files": {}}
+        if opts.get("json", True):
+            out["files"]["json"] = self.graph_export.write_json(graph, str(base) + ".json")
+        if opts.get("graphml", True):
+            out["files"]["graphml"] = self.graph_export.write_graphml(graph, str(base) + ".graphml")
+        return out
+
+    def run_plugin(self, plugin_id: str, target: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Plugin {plugin_id}: {target}")
+        return self.plugins.run(plugin_id, target, options)
+
+    def tor_health(self) -> Dict:
+        print("\n[+] Tor health check...")
+        return self.dark_web_intel.tor_health()
+
     def correlate_results(self, results: Dict) -> Dict:
         print("\n[+] Correlating entities...")
         return self.correlator.correlate(results)
@@ -480,10 +573,27 @@ class OSINTToolkit:
             except Exception:
                 pass
             try:
+                all_results['results']['related_domains'] = self.find_related_domains(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['passive_dns'] = self.lookup_passive_dns(target)
+            except Exception:
+                pass
+            try:
+                url = f"https://{target}" if not target.startswith('http') else target
+                all_results['results']['js_secrets'] = self.mine_js_secrets(url)
+            except Exception:
+                pass
+            try:
                 ip = (all_results['results']['domain'].get('dns_records') or {}).get('IP')
                 if ip:
                     all_results['results']['ip'] = self.analyze_ip(ip, {})
                     all_results['results']['asn'] = self.analyze_asn(ip)
+                    try:
+                        all_results['results']['abuse'] = self.check_abuse(ip)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -495,6 +605,23 @@ class OSINTToolkit:
             })
             all_results['results']['host_intel'] = self.analyze_host_apis(target, {})
             all_results['results']['dorks'] = self.generate_dorks(target, {'kind': 'ip'})
+            try:
+                all_results['results']['passive_dns'] = self.lookup_passive_dns(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['abuse'] = self.check_abuse(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['ioc'] = self.enrich_ioc(target)
+            except Exception:
+                pass
+
+        elif scan_type == "wallet":
+            all_results['results']['crypto'] = self.analyze_crypto(target, {'tokens': True, 'txs': True})
+            all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 20})
+            all_results['results']['dorks'] = self.generate_dorks(target, {'kind': 'wallet'})
 
         elif scan_type == "url":
             all_results['results']['website'] = self.crawl_website(target, {
@@ -516,8 +643,20 @@ class OSINTToolkit:
             all_results['results']['domain'] = self.gather_domain_intel(domain, {
                 'dns': True, 'subdomains': False, 'whois': True, 'ssl': True
             })
+            try:
+                all_results['results']['email_accounts'] = self.check_email_accounts(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['perms'] = self.generate_username_perms(target)
+            except Exception:
+                pass
 
         elif scan_type == "onion":
+            try:
+                all_results['results']['tor_health'] = self.tor_health()
+            except Exception:
+                pass
             all_results['results']['dark_web'] = self.analyze_dark_web(target, {
                 'analyze': True, 'crawl': True, 'map_links': False, 'depth': 1, 'max_pages': 30
             })
@@ -531,6 +670,10 @@ class OSINTToolkit:
                 'profile': True, 'repos': True, 'email': True, 'creation': True
             })
             all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 15})
+            try:
+                all_results['results']['perms'] = self.generate_username_perms(target)
+            except Exception:
+                pass
         
         elif scan_type == "company":
             all_results['results']['company'] = self.analyze_company(target, {
@@ -539,6 +682,10 @@ class OSINTToolkit:
             all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 15})
 
         all_results['correlation'] = self.correlate_results(all_results)
+        try:
+            all_results['results']['graph'] = self.export_graph(all_results, {'json': True, 'graphml': True})
+        except Exception:
+            pass
         return all_results
     
     def save_results(self, results: Dict, format: str = "json") -> str:
@@ -556,6 +703,10 @@ class OSINTToolkit:
                 f.write(report)
         elif format == "html":
             report = self.report_gen.generate_html_report(results)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(report)
+        elif format == "md":
+            report = self.report_gen.generate_markdown_report(results)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(report)
         
@@ -596,7 +747,7 @@ Examples:
     parser.add_argument('-t', '--target', help='Target (domain, username, IP, company, etc.)')
     parser.add_argument('--tui', action='store_true', help='Launch interactive ASCII/ANSI TUI')
     parser.add_argument('--type',
-                       choices=['domain', 'username', 'ip', 'url', 'company', 'onion', 'phone', 'email', 'auto'],
+                       choices=['domain', 'username', 'ip', 'url', 'company', 'onion', 'phone', 'email', 'wallet', 'auto'],
                        default='auto',
                        help='Type of target (default: auto-detect)')
     parser.add_argument('--full', action='store_true', help='Run full comprehensive scan')
@@ -634,6 +785,25 @@ Examples:
     parser.add_argument('--takeover', action='store_true', help='Subdomain takeover fingerprint checks')
     parser.add_argument('--favicon', action='store_true', help='Favicon mmh3 hash + Shodan pivot')
     parser.add_argument('--meta', action='store_true', help='EXIF / metadata from image URL or local file')
+    parser.add_argument('--email-accounts', action='store_true', help='Holehe-style email→account checks')
+    parser.add_argument('--perms', action='store_true', help='Username / name permutations')
+    parser.add_argument('--related', action='store_true', help='Related domains (CT / SSL / same IP)')
+    parser.add_argument('--js-secrets', action='store_true', help='Mine JS/page for secrets & API paths')
+    parser.add_argument('--image-pivots', action='store_true', help='Reverse-image search pivot URLs')
+    parser.add_argument('--passive-dns', action='store_true', help='Passive DNS lookup')
+    parser.add_argument('--abuse', action='store_true', help='DNSBL / abuse reputation')
+    parser.add_argument('--ioc', action='store_true', help='IOC enrichment (VT/OTX if keyed)')
+    parser.add_argument('--crypto', action='store_true', help='Web3 wallet / ENS / tx intelligence')
+    parser.add_argument('--crypto-chains', action='store_true', help='List supported blockchains')
+    parser.add_argument('--screenshot', action='store_true', help='Headless Chrome screenshot if installed')
+    parser.add_argument('--graph', action='store_true', help='Export correlation graph (JSON + GraphML)')
+    parser.add_argument('--tor-check', action='store_true', help='Check Tor SOCKS health')
+    parser.add_argument('--plugin', help='Run a plugin by id from modules/plugins/')
+    parser.add_argument('--list-plugins', action='store_true', help='List available plugins')
+    parser.add_argument('--case', help='Attach scan to investigation case id')
+    parser.add_argument('--case-create', help='Create investigation case with this name')
+    parser.add_argument('--case-list', action='store_true', help='List investigation cases')
+    parser.add_argument('--batch', help='Batch targets file (one per line); runs auto scan each')
     parser.add_argument('--tor', action='store_true', help='Use Tor proxy (requires Tor running)')
     parser.add_argument('--correlate', action='store_true', help='Build entity correlation graph')
     
@@ -646,8 +816,12 @@ Examples:
     parser.add_argument('--shodan-key', help='Shodan API key')
     parser.add_argument('--censys-id', help='Censys API ID')
     parser.add_argument('--censys-secret', help='Censys API secret')
+    parser.add_argument('--vt-key', help='VirusTotal API key')
+    parser.add_argument('--otx-key', help='AlienVault OTX API key')
+    parser.add_argument('--etherscan-key', help='Etherscan API key (ETH tx history)')
+    parser.add_argument('--rate-limit', type=float, default=0.0, help='Max requests/sec soft limit (0=off)')
     parser.add_argument('-o', '--output', default='reports', help='Output directory (default: reports)')
-    parser.add_argument('-f', '--format', choices=['json', 'txt', 'html'], default='json',
+    parser.add_argument('-f', '--format', choices=['json', 'txt', 'html', 'md'], default='json',
                        help='Output format (default: json)')
     parser.add_argument('--ports-range', default='common', help='Port range to scan (default: common)')
     parser.add_argument('--depth', type=int, default=2, help='Crawl depth (default: 2)')
@@ -662,7 +836,61 @@ Examples:
         shodan_key=args.shodan_key,
         censys_id=args.censys_id,
         censys_secret=args.censys_secret,
+        vt_key=args.vt_key,
+        otx_key=args.otx_key,
+        etherscan_key=args.etherscan_key,
+        rate_limit=args.rate_limit,
     )
+
+    if args.case_list:
+        for c in toolkit.cases.list_cases():
+            print(f"{c['id']}\t{c['name']}\ttargets={c['targets']}\tscans={c['scans']}")
+        return
+    if args.case_create:
+        case = toolkit.cases.create(args.case_create)
+        print(json.dumps(case, indent=2, default=str))
+        return
+    if args.list_plugins:
+        for p in toolkit.plugins.discover():
+            print(f"{p.get('id')}\t{p.get('name')}\t{p.get('description', '')}")
+        return
+    if args.crypto_chains:
+        from modules.crypto_intel import CryptoIntel
+        for name, meta in sorted(CryptoIntel.supported().items()):
+            print(f"{name:12}  {meta.get('tier', ''):8}  {meta.get('family', ''):12}  {meta.get('note', '')}")
+        return
+    if args.tor_check:
+        print(json.dumps(toolkit.tor_health(), indent=2, default=str))
+        return
+
+    if args.batch:
+        batch_path = Path(args.batch).expanduser()
+        try:
+            resolved = batch_path.resolve()
+            resolved.relative_to(Path.cwd().resolve())
+            lines = [
+                ln.strip() for ln in resolved.read_text(encoding='utf-8', errors='replace').splitlines()
+                if ln.strip() and not ln.strip().startswith('#')
+            ][:100]
+        except (ValueError, OSError) as exc:
+            print(f"[!] Batch file error: {exc}")
+            sys.exit(1)
+        if args.tor:
+            toolkit.dark_web_intel = DarkWebIntel(use_tor=True)
+        for target in lines:
+            print(f"\n[+] Batch target: {target}")
+            results = toolkit.run_auto_scan(target)
+            path = toolkit.save_results(results, args.format)
+            if args.case:
+                toolkit.cases.attach_scan(args.case, {
+                    'target': target,
+                    'scan_type': results.get('scan_type'),
+                    'report_path': path,
+                    'counts': (results.get('correlation') or {}).get('counts') or {},
+                })
+            if not args.quiet:
+                print(f"  Saved: {path}")
+        return
     
     # Interactive TUI when no target given, or --tui requested
     if args.tui or not args.target:
@@ -725,6 +953,30 @@ Examples:
                 results['results']['favicon'] = toolkit.analyze_favicon(args.target)
             if args.meta:
                 results['results']['meta'] = toolkit.analyze_metadata(args.target)
+            if args.email_accounts:
+                results['results']['email_accounts'] = toolkit.check_email_accounts(args.target)
+            if args.perms:
+                results['results']['perms'] = toolkit.generate_username_perms(args.target)
+            if args.related:
+                results['results']['related_domains'] = toolkit.find_related_domains(args.target)
+            if args.js_secrets:
+                url = args.target if args.target.startswith('http') else f"https://{args.target}"
+                results['results']['js_secrets'] = toolkit.mine_js_secrets(url)
+            if args.image_pivots:
+                results['results']['image_pivots'] = toolkit.image_pivots(args.target)
+            if args.passive_dns:
+                results['results']['passive_dns'] = toolkit.lookup_passive_dns(args.target)
+            if args.abuse:
+                results['results']['abuse'] = toolkit.check_abuse(args.target)
+            if args.ioc:
+                results['results']['ioc'] = toolkit.enrich_ioc(args.target)
+            if args.crypto:
+                results['results']['crypto'] = toolkit.analyze_crypto(args.target)
+            if args.screenshot:
+                url = args.target if args.target.startswith('http') else f"https://{args.target}"
+                results['results']['screenshot'] = toolkit.capture_screenshot(url)
+            if args.plugin:
+                results['results']['plugin'] = toolkit.run_plugin(args.plugin, args.target)
             
             if scan_type == 'domain':
                 module_flags = [
@@ -732,6 +984,10 @@ Examples:
                     args.directories, args.comprehensive_crawl, args.emails,
                     args.urls, args.urlteam, args.ports, args.wayback, args.pastes, args.ip,
                     args.dorks, args.asn, args.buckets, args.takeover, args.favicon, args.meta,
+                    args.email_accounts, args.perms, args.related, args.js_secrets,
+                    args.image_pivots, args.passive_dns, args.abuse, args.ioc, args.crypto,
+                    args.screenshot,
+                    bool(args.plugin),
                 ]
                 run_domain = args.dns or args.subdomains or args.whois or args.ssl or not any(module_flags)
                 if run_domain:
@@ -834,6 +1090,14 @@ Examples:
                         'ports': args.ports_range
                     })
             
+            elif scan_type == 'wallet':
+                if 'crypto' not in results['results']:
+                    results['results']['crypto'] = toolkit.analyze_crypto(args.target)
+                if args.pastes:
+                    results['results']['pastes'] = toolkit.hunt_pastes(args.target, {'limit': 20})
+                if args.dorks:
+                    results['results']['dorks'] = toolkit.generate_dorks(args.target, {'kind': 'wallet'})
+
             elif scan_type == 'username':
                 if args.social or (not args.github):
                     results['results']['social'] = toolkit.gather_social_intel(args.target, {
@@ -859,11 +1123,20 @@ Examples:
 
             if args.correlate or results.get('results'):
                 results['correlation'] = toolkit.correlate_results(results)
+            if args.graph and results.get('results'):
+                results['results']['graph'] = toolkit.export_graph(results)
         
         # Save results
         if not args.quiet:
             print(f"\n[+] Saving results...")
         filepath = toolkit.save_results(results, args.format)
+        if args.case:
+            toolkit.cases.attach_scan(args.case, {
+                'target': args.target,
+                'scan_type': results.get('scan_type'),
+                'report_path': filepath,
+                'counts': (results.get('correlation') or {}).get('counts') or {},
+            })
         
         if not args.quiet:
             print(f"\n{'='*60}")

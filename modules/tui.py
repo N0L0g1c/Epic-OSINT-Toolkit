@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import curses
 import io
+import json
 import re
 import threading
 import traceback
@@ -150,10 +151,19 @@ MAIN_MENU: List[MenuItem] = [
     ("domain", "Domain Intel", "DNS WHOIS SSL DMARC"),
     ("ip", "IP Intel", "Geo ASN rDNS risk"),
     ("asn", "ASN / Netblocks", "Prefixes peers upstreams"),
+    ("related", "Related Domains", "CT SSL same-IP pivots"),
+    ("passive", "Passive DNS", "Historical host/IP"),
+    ("abuse", "Abuse / DNSBL", "Reputation lists"),
+    ("ioc", "IOC Enrich", "VT / OTX / pivots"),
+    ("crypto", "Web3 / Crypto", "Wallet ENS tx risk"),
     ("social", "Social Media", "100+ username matrix"),
+    ("perms", "Username Perms", "Name/email permutations"),
     ("github", "GitHub", "Profile repos emails"),
     ("crawl", "Web Crawler", "Crawl extract tech"),
+    ("jssecrets", "JS Secrets", "Keys paths endpoints"),
+    ("screenshot", "Screenshot", "Headless Chrome capture"),
     ("emails", "Email Discover", "Find verify sources"),
+    ("emailacct", "Email Accounts", "Holehe-style checks"),
     ("urls", "URL Hunter", "Shorteners Wayback"),
     ("wayback", "Wayback", "Archive.org CDX"),
     ("pastes", "Paste / Leaks", "GitHub code dorks"),
@@ -161,19 +171,24 @@ MAIN_MENU: List[MenuItem] = [
     ("buckets", "Cloud Buckets", "S3 GCS Azure Spaces"),
     ("takeover", "Takeover Check", "Dangling DNS fingerprints"),
     ("favicon", "Favicon Hash", "mmh3 + Shodan pivot"),
-    ("meta", "EXIF / Meta", "Image metadata GPS"),
+    ("meta", "EXIF / Meta", "Image/PDF metadata"),
+    ("imgpivot", "Image Pivots", "Reverse-image URLs"),
     ("phone", "Phone OSINT", "E164 pivots leaks"),
     ("ports", "Port Scanner", "Open ports banners"),
     ("host", "Shodan/Censys", "Host intel APIs"),
     ("employees", "Employees", "Staff + HIBP leaks"),
     ("darkweb", "Dark Web", ".onion analyze"),
     ("onionsearch", "Onion Search", "Ahmia directory"),
+    ("torcheck", "Tor Health", "SOCKS proxy check"),
+    ("graph", "Graph Export", "JSON + GraphML"),
+    ("cases", "Cases", "Investigation folders"),
+    ("plugins", "Plugins", "User drop-in modules"),
     ("reports", "Reports", "View / delete saves"),
     ("settings", "Settings", "Format Tor API keys"),
     ("quit", "Quit", "Exit toolkit"),
 ]
 
-FULL_TYPES = ["domain", "username", "company", "ip", "email", "phone", "onion"]
+FULL_TYPES = ["domain", "username", "company", "ip", "email", "phone", "onion", "wallet"]
 DOMAIN_OPTS = [("dns", "DNS enumeration", True), ("subdomains", "Subdomain discovery", True),
                ("whois", "WHOIS lookup", True), ("ssl", "SSL certificate analysis", True)]
 SOCIAL_OPTS = [("search", "Platform search", True), ("email", "Email discovery", True),
@@ -210,6 +225,10 @@ class EpicTUI:
             "shodan_key": "",
             "censys_id": "",
             "censys_secret": "",
+            "vt_key": "",
+            "otx_key": "",
+            "etherscan_key": "",
+            "rate_limit": "0",
         }
         self.last_results: Optional[Dict] = None
         self.last_filepath: Optional[str] = None
@@ -754,10 +773,19 @@ class EpicTUI:
             "domain": self._screen_domain,
             "ip": self._screen_ip,
             "asn": self._screen_asn,
+            "related": self._screen_related,
+            "passive": self._screen_passive,
+            "abuse": self._screen_abuse,
+            "ioc": self._screen_ioc,
+            "crypto": self._screen_crypto,
             "social": self._screen_social,
+            "perms": self._screen_perms,
             "github": self._screen_github,
             "crawl": self._screen_crawl,
+            "jssecrets": self._screen_jssecrets,
+            "screenshot": self._screen_screenshot,
             "emails": self._screen_emails,
+            "emailacct": self._screen_email_accounts,
             "urls": self._screen_urls,
             "wayback": self._screen_wayback,
             "pastes": self._screen_pastes,
@@ -766,12 +794,17 @@ class EpicTUI:
             "takeover": self._screen_takeover,
             "favicon": self._screen_favicon,
             "meta": self._screen_meta,
+            "imgpivot": self._screen_imgpivot,
             "phone": self._screen_phone,
             "ports": self._screen_ports,
             "host": self._screen_host,
             "employees": self._screen_employees,
             "darkweb": self._screen_darkweb,
             "onionsearch": self._screen_onion_search,
+            "torcheck": self._screen_tor_check,
+            "graph": self._screen_graph,
+            "cases": self._screen_cases,
+            "plugins": self._screen_plugins,
             "reports": self._screen_reports,
             "settings": self._screen_settings,
         }
@@ -783,6 +816,9 @@ class EpicTUI:
         from modules.host_intel import HostIntel
         from modules.paste_intel import PasteIntel
         from modules.email_intel import EmailIntel
+        from modules.ioc_intel import IOCIntel
+        from modules.crypto_intel import CryptoIntel
+        from modules.http_util import set_rate_limit
         tok = self.settings.get("github_token") or None
         if tok:
             self.toolkit.github_token = tok
@@ -793,6 +829,19 @@ class EpicTUI:
             censys_id=self.settings.get("censys_id") or None,
             censys_secret=self.settings.get("censys_secret") or None,
         )
+        self.toolkit.ioc_intel = IOCIntel(
+            vt_key=self.settings.get("vt_key") or None,
+            otx_key=self.settings.get("otx_key") or None,
+        )
+        self.toolkit.crypto_intel = CryptoIntel(
+            etherscan_key=self.settings.get("etherscan_key") or None,
+        )
+        try:
+            rl = float(self.settings.get("rate_limit") or 0)
+            if rl > 0:
+                set_rate_limit(rl)
+        except ValueError:
+            pass
 
     def _apply_tor(self) -> None:
         if self.settings.get("use_tor"):
@@ -1101,6 +1150,191 @@ class EpicTUI:
         except Exception as exc:
             self._scroll_text("Error", str(exc))
 
+    def _screen_related(self) -> None:
+        target = self._ask_target("Domain")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Related -> {target}", lambda: self.toolkit.find_related_domains(target))
+            self._show_results(self._wrap(target, "domain", {"related_domains": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_passive(self) -> None:
+        target = self._ask_target("Host or IP")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Passive DNS -> {target}", lambda: self.toolkit.lookup_passive_dns(target))
+            self._show_results(self._wrap(target, "passive_dns", {"passive_dns": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_abuse(self) -> None:
+        target = self._ask_target("IP or host")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Abuse -> {target}", lambda: self.toolkit.check_abuse(target))
+            self._show_results(self._wrap(target, "abuse", {"abuse": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_ioc(self) -> None:
+        target = self._ask_target("IP / domain / URL / hash")
+        if not target:
+            return
+        self._apply_api_keys()
+        try:
+            data = self._run_with_spinner(f"IOC -> {target}", lambda: self.toolkit.enrich_ioc(target))
+            self._show_results(self._wrap(target, "ioc", {"ioc": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_crypto(self) -> None:
+        target = self._ask_target("Wallet / ENS / tx hash")
+        if not target:
+            return
+        self._apply_api_keys()
+        try:
+            data = self._run_with_spinner(
+                f"Web3 -> {target}",
+                lambda: self.toolkit.analyze_crypto(target, {"tokens": True, "txs": True}),
+            )
+            self._show_results(self._wrap(target, "wallet", {"crypto": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_perms(self) -> None:
+        target = self._ask_target("Name / username / email")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Perms -> {target}", lambda: self.toolkit.generate_username_perms(target))
+            self._show_results(self._wrap(target, "perms", {"perms": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_jssecrets(self) -> None:
+        target = self._ask_target("URL or domain")
+        if not target:
+            return
+        url = target if target.startswith("http") else f"https://{target}"
+        try:
+            data = self._run_with_spinner(f"JS secrets -> {url}", lambda: self.toolkit.mine_js_secrets(url))
+            self._show_results(self._wrap(target, "js_secrets", {"js_secrets": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_screenshot(self) -> None:
+        target = self._ask_target("URL or domain")
+        if not target:
+            return
+        url = target if target.startswith("http") else f"https://{target}"
+        try:
+            data = self._run_with_spinner(f"Screenshot -> {url}", lambda: self.toolkit.capture_screenshot(url))
+            self._show_results(self._wrap(target, "screenshot", {"screenshot": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_email_accounts(self) -> None:
+        target = self._ask_target("Email address")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Email accounts -> {target}", lambda: self.toolkit.check_email_accounts(target))
+            self._show_results(self._wrap(target, "email", {"email_accounts": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_imgpivot(self) -> None:
+        target = self._ask_target("Image URL or hash/query")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Image pivots -> {target}", lambda: self.toolkit.image_pivots(target))
+            self._show_results(self._wrap(target, "image", {"image_pivots": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_tor_check(self) -> None:
+        self._apply_tor()
+        try:
+            data = self._run_with_spinner("Tor health", lambda: self.toolkit.tor_health())
+            self._show_results(self._wrap("tor", "tor", {"tor_health": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_graph(self) -> None:
+        if not self.last_results:
+            self.status_msg = "Run a scan first, then export graph"
+            return
+        try:
+            data = self._run_with_spinner(
+                "Graph export",
+                lambda: self.toolkit.export_graph(self.last_results),
+            )
+            wrapped = dict(self.last_results)
+            wrapped.setdefault("results", {})["graph"] = data
+            self._show_results(wrapped)
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_cases(self) -> None:
+        actions = [
+            ("list", "List cases", "Show investigation cases"),
+            ("create", "Create case", "New case folder"),
+            ("attach", "Attach last scan", "Link last results to a case"),
+        ]
+        choice = self._select_list("Cases", actions)
+        if not choice:
+            return
+        if choice == "list":
+            cases = self.toolkit.cases.list_cases()
+            if not cases:
+                self.status_msg = "No cases yet"
+                return
+            lines = [f"{c['id']}  {c['name']}  targets={c['targets']} scans={c['scans']}" for c in cases]
+            self._scroll_text("Cases", "\n".join(lines))
+        elif choice == "create":
+            name = self._ask_target("Case name")
+            if not name:
+                return
+            case = self.toolkit.cases.create(name)
+            self._scroll_text("Case created", json.dumps(case, indent=2, default=str))
+        elif choice == "attach":
+            if not self.last_results or not self.last_filepath:
+                self.status_msg = "No scan to attach"
+                return
+            cid = self._ask_target("Case id")
+            if not cid:
+                return
+            out = self.toolkit.cases.attach_scan(cid, {
+                "target": self.last_results.get("target"),
+                "scan_type": self.last_results.get("scan_type"),
+                "report_path": self.last_filepath,
+                "counts": (self.last_results.get("correlation") or {}).get("counts") or {},
+            })
+            self._scroll_text("Case updated", json.dumps(out, indent=2, default=str))
+
+    def _screen_plugins(self) -> None:
+        plugs = self.toolkit.plugins.discover()
+        if not plugs:
+            self.status_msg = "No plugins in modules/plugins/"
+            return
+        items = [(p.get("id") or "?", p.get("name") or "?", p.get("description") or p.get("error") or "") for p in plugs]
+        pid = self._select_list("Plugins", items)
+        if not pid:
+            return
+        target = self._ask_target("Target for plugin")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Plugin {pid}", lambda: self.toolkit.run_plugin(pid, target))
+            self._show_results(self._wrap(target, "plugin", {"plugin": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
     def _safe_report_path(self, path: Path, out: Path) -> Optional[Path]:
         try:
             resolved = path.resolve()
@@ -1191,22 +1425,26 @@ class EpicTUI:
 
     def _screen_settings(self) -> None:
         extras = [
-            ("format", "Output format (json/txt/html)", self.settings["format"]),
+            ("format", "Output format (json/txt/html/md)", self.settings["format"]),
             ("output_dir", "Output directory", self.settings["output_dir"]),
             ("depth", "Default crawl depth", str(self.settings["depth"])),
             ("max_pages", "Default max pages", str(self.settings["max_pages"])),
             ("ports_range", "Default port range", self.settings["ports_range"]),
+            ("rate_limit", "Rate limit req/s (0=off)", str(self.settings.get("rate_limit") or "0")),
             ("github_token", "GitHub token (optional)", self.settings.get("github_token") or ""),
             ("shodan_key", "Shodan API key", self.settings.get("shodan_key") or ""),
             ("censys_id", "Censys API ID", self.settings.get("censys_id") or ""),
             ("censys_secret", "Censys API secret", self.settings.get("censys_secret") or ""),
+            ("vt_key", "VirusTotal API key", self.settings.get("vt_key") or ""),
+            ("otx_key", "OTX API key", self.settings.get("otx_key") or ""),
+            ("etherscan_key", "Etherscan API key", self.settings.get("etherscan_key") or ""),
         ]
         tor_opts = [("use_tor", "Use Tor proxy for dark web", bool(self.settings["use_tor"]))]
         result = self._toggle_options("Settings", tor_opts, extras)
         if not result:
             return
         fmt = (result.get("format") or "json").lower()
-        self.settings["format"] = fmt if fmt in ("json", "txt", "html") else "json"
+        self.settings["format"] = fmt if fmt in ("json", "txt", "html", "md") else "json"
         out_path = Path(result.get("output_dir") or "reports").expanduser()
         if out_path.is_absolute() and not str(out_path).startswith(str(Path.cwd())):
             out_path = Path("reports")
@@ -1220,7 +1458,8 @@ class EpicTUI:
             pass
         self.settings["ports_range"] = result.get("ports_range") or "common"
         self.settings["use_tor"] = bool(result.get("use_tor"))
-        for key in ("github_token", "shodan_key", "censys_id", "censys_secret"):
+        self.settings["rate_limit"] = str(result.get("rate_limit") or "0")
+        for key in ("github_token", "shodan_key", "censys_id", "censys_secret", "vt_key", "otx_key", "etherscan_key"):
             self.settings[key] = (result.get(key) or "").strip()
         self._apply_tor()
         self._apply_api_keys()

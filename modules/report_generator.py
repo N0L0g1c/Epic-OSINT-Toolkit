@@ -367,6 +367,48 @@ class ReportGenerator:
         html.append("</html>")
         
         return "\n".join(html)
+
+    def generate_markdown_report(self, results: Dict) -> str:
+        """Generate Markdown report from structured results."""
+        lines = [
+            "# Epic OSINT Toolkit — Intelligence Report",
+            "",
+            f"- **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- **Target:** `{results.get('target', 'Unknown')}`",
+            f"- **Scan type:** `{results.get('scan_type', 'Unknown')}`",
+            f"- **Timestamp:** `{results.get('timestamp', '')}`",
+            "",
+        ]
+        res = results.get("results") or {}
+        for key, data in res.items():
+            title = key.replace("_", " ").title()
+            lines.append(f"## {title}")
+            lines.append("")
+            if isinstance(data, dict):
+                for k, v in list(data.items())[:40]:
+                    if isinstance(v, (list, tuple)):
+                        lines.append(f"### {k}")
+                        for item in list(v)[:25]:
+                            lines.append(f"- `{item}`" if not isinstance(item, dict) else f"- {item}")
+                        lines.append("")
+                    elif isinstance(v, dict):
+                        lines.append(f"### {k}")
+                        for sk, sv in list(v.items())[:20]:
+                            lines.append(f"- **{sk}:** `{sv}`")
+                        lines.append("")
+                    else:
+                        lines.append(f"- **{k}:** `{v}`")
+            else:
+                lines.append(f"```\n{data}\n```")
+            lines.append("")
+        if results.get("correlation"):
+            corr = results["correlation"]
+            lines.append("## Correlation")
+            lines.append("")
+            for k, v in (corr.get("counts") or {}).items():
+                lines.append(f"- **{k}:** {v}")
+            lines.append("")
+        return "\n".join(lines)
     
     def print_summary(self, results: Dict):
         """Print summary to console"""
