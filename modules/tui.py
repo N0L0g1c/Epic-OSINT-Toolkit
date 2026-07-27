@@ -1,5 +1,5 @@
 """
-Epic OSINT Toolkit — Interactive Terminal UI
+Epic OSINT Toolkit -- Interactive Terminal UI
 Full-terminal split layout: menu left, feature pane right.
 Heavy ASCII/ANSI. Pure stdlib (curses).
 """
@@ -188,6 +188,166 @@ MAIN_MENU: List[MenuItem] = [
     ("quit", "Quit", "Exit toolkit"),
 ]
 
+# Beginner-friendly blurbs shown as an info box inside each module.
+MODULE_HELP: Dict[str, str] = {
+    "auto": (
+        "Figures out what your target is (domain, IP, email, username, ...) "
+        "then runs the right modules and links findings into one report."
+    ),
+    "full": (
+        "Runs a broad multi-module scan for a chosen target type. "
+        "Use when you already know whether it is a domain, IP, email, etc."
+    ),
+    "domain": (
+        "Looks up DNS records, WHOIS ownership, SSL certificates, and email "
+        "security (SPF/DMARC). Core starting point for any website or company domain."
+    ),
+    "ip": (
+        "Shows where an IP sits geographically, which network owns it (ASN), "
+        "reverse DNS names, and simple risk signals."
+    ),
+    "asn": (
+        "Maps an IP or ASN to the provider's netblocks, peers, and upstreams -- "
+        "useful for understanding who runs a network and how big it is."
+    ),
+    "related": (
+        "Finds other domains that share certificates, SSL history, or the same IP. "
+        "Great for discovering sister sites and infrastructure pivots."
+    ),
+    "passive": (
+        "Shows historical DNS resolutions (which hosts pointed to which IPs over time) "
+        "without actively querying the target's live servers."
+    ),
+    "abuse": (
+        "Checks reputation / DNSBL blocklists to see if an IP or host has been "
+        "flagged for spam, malware, or other abuse."
+    ),
+    "ioc": (
+        "Enriches an indicator of compromise (IP, domain, URL, or file hash) "
+        "via VirusTotal / OTX when API keys are set -- who else has seen it?"
+    ),
+    "crypto": (
+        "Investigates crypto wallets, ENS names, and tx hashes across chains: "
+        "balances, tokens, activity, and privacy-related signals."
+    ),
+    "social": (
+        "Checks whether a username exists across 100+ platforms. "
+        "Classic first step when you only have a handle."
+    ),
+    "perms": (
+        "Builds likely username and email variations from a name or handle "
+        "(jsmith, john.smith, j.smith@...). Feed these into other modules."
+    ),
+    "github": (
+        "Pulls public GitHub profile data, repos, and leaked emails from commits -- "
+        "developers often leave useful OSINT breadcrumbs here."
+    ),
+    "crawl": (
+        "Visits a site, follows links, and extracts pages, tech stack, directories, "
+        "and interesting content. Deeper than a single HTTP request."
+    ),
+    "jssecrets": (
+        "Scans JavaScript and pages for accidental secrets: API keys, tokens, "
+        "internal paths, and hidden endpoints."
+    ),
+    "screenshot": (
+        "Takes a headless Chrome snapshot of a URL so you have visual proof "
+        "of what the page looked like at scan time."
+    ),
+    "emails": (
+        "Discovers email addresses tied to a domain and can verify or find "
+        "where they appear online."
+    ),
+    "emailacct": (
+        "Holehe-style check: which sites have an account registered to this "
+        "email (without logging in)."
+    ),
+    "urls": (
+        "Hunts shortened and archived URLs related to a domain -- old links often "
+        "reveal forgotten pages or leaks."
+    ),
+    "wayback": (
+        "Queries the Internet Archive (archive.org) for historical snapshots "
+        "of a domain -- what existed before, including deleted paths."
+    ),
+    "pastes": (
+        "Searches paste sites and public GitHub code for dumps mentioning your "
+        "query (credentials, configs, internal URLs)."
+    ),
+    "dorks": (
+        "Builds ready-to-use Google / DuckDuckGo / Bing search queries (dorks) "
+        "that surface indexed files, logins, and exposed data."
+    ),
+    "buckets": (
+        "Probes common public cloud storage names (S3, GCS, Azure, Spaces) "
+        "for misconfigured buckets that may list or leak files."
+    ),
+    "takeover": (
+        "Checks for dangling DNS (CNAME to unused cloud services) that an "
+        "attacker could claim -- a common subdomain-takeover risk."
+    ),
+    "favicon": (
+        "Hashes a site's favicon (mmh3) so you can pivot in Shodan/similar "
+        "engines to find other hosts using the same icon."
+    ),
+    "meta": (
+        "Reads EXIF and file metadata from images/PDFs -- GPS, camera, author, "
+        "software, and other embedded clues."
+    ),
+    "imgpivot": (
+        "Builds reverse-image and hash search URLs so you can find where else "
+        "the same picture appears online."
+    ),
+    "phone": (
+        "Normalizes a phone number and gathers OSINT pivots / leak-style "
+        "signals around the E.164 form."
+    ),
+    "ports": (
+        "Scans a host for open TCP ports and grabs service banners -- "
+        "what services are listening and how they identify themselves."
+    ),
+    "host": (
+        "Queries Shodan/Censys (API keys required) for internet-wide host intel: "
+        "open services, banners, and historical exposure."
+    ),
+    "employees": (
+        "Finds staff names tied to a company and optionally checks Have I Been "
+        "Pwned for credential-leak hits (HIBP key helps)."
+    ),
+    "darkweb": (
+        "Fetches and analyzes a .onion site (optionally via Tor): content, "
+        "links, and basic mapping of the onion's neighborhood."
+    ),
+    "onionsearch": (
+        "Searches public onion directories (e.g. Ahmia) for .onion sites "
+        "matching a keyword -- no Tor required for the directory itself."
+    ),
+    "torcheck": (
+        "Verifies whether your Tor SOCKS proxy is up and usable before you "
+        "run dark-web modules that need it."
+    ),
+    "graph": (
+        "Exports your last scan as a relationship graph (JSON + GraphML) "
+        "you can open in tools like Gephi or yEd."
+    ),
+    "cases": (
+        "Organizes investigations into case folders: create a case, list them, "
+        "and attach saved scans so work stays grouped."
+    ),
+    "plugins": (
+        "Runs user drop-in modules from modules/plugins/. Extend the toolkit "
+        "without editing core code."
+    ),
+    "reports": (
+        "Browse, open, or delete previously saved scan reports from your "
+        "output folder."
+    ),
+    "settings": (
+        "Configure output format, Tor, crawl defaults, rate limits, and optional "
+        "API keys (GitHub, Shodan, Censys, VT, OTX, Etherscan)."
+    ),
+}
+
 FULL_TYPES = ["domain", "username", "company", "ip", "email", "phone", "onion", "wallet"]
 DOMAIN_OPTS = [("dns", "DNS enumeration", True), ("subdomains", "Subdomain discovery", True),
                ("whois", "WHOIS lookup", True), ("ssl", "SSL certificate analysis", True)]
@@ -237,6 +397,7 @@ class EpicTUI:
         self.menu_idx = 0
         self.panel_title = "HOME"
         self._content: Optional[Rect] = None  # active right/full content rect
+        self._active_module: Optional[str] = None
 
     def run(self) -> None:
         curses.wrapper(self._main)
@@ -413,6 +574,70 @@ class EpicTUI:
         _, _, h, w = self._content
         return h, w
 
+    @staticmethod
+    def _wrap_text(text: str, width: int) -> List[str]:
+        """Word-wrap plain text to width; empty input → []."""
+        if width < 8 or not text:
+            return []
+        words = text.split()
+        lines: List[str] = []
+        cur = ""
+        for word in words:
+            if len(word) > width:
+                if cur:
+                    lines.append(cur)
+                    cur = ""
+                for i in range(0, len(word), width):
+                    chunk = word[i : i + width]
+                    if len(chunk) == width:
+                        lines.append(chunk)
+                    else:
+                        cur = chunk
+                continue
+            trial = f"{cur} {word}".strip()
+            if len(trial) <= width:
+                cur = trial
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = word
+        if cur:
+            lines.append(cur)
+        return lines
+
+    def _draw_info_box(self, start_row: int = 0, module_id: Optional[str] = None) -> int:
+        """
+        Draw a small beginner info box for the active module.
+        Returns the next free content row (start_row if nothing drawn).
+        """
+        mid = module_id if module_id is not None else self._active_module
+        help_text = MODULE_HELP.get(mid or "")
+        if not help_text:
+            return start_row
+        ch_, cw = self._content_size()
+        if ch_ < start_row + 5 or cw < 24:
+            return start_row
+        inner_w = max(12, cw - 4)
+        body = self._wrap_text(help_text, inner_w)[:4]
+        if not body:
+            return start_row
+        box_h = 3 + len(body)  # top, title, body..., bottom
+        if start_row + box_h > ch_:
+            body = body[: max(1, ch_ - start_row - 3)]
+            box_h = 3 + len(body)
+        top = "#" + ("-" * (cw - 2)) + "#"
+        self._content_write(start_row, 0, top[:cw], _attr(Theme.BORDER))
+        title = " WHAT THIS DOES "
+        mid_line = "#" + title + ("-" * max(0, cw - 2 - len(title))) + "#"
+        self._content_write(start_row + 1, 0, mid_line[:cw], _attr(Theme.ACCENT, True))
+        for i, line in enumerate(body):
+            row = start_row + 2 + i
+            padded = f"# {line.ljust(inner_w)} #"
+            self._content_write(row, 0, padded[:cw], _attr(Theme.DIM))
+        bot = "#" + ("-" * (cw - 2)) + "#"
+        self._content_write(start_row + box_h - 1, 0, bot[:cw], _attr(Theme.BORDER))
+        return start_row + box_h + 1
+
     # ── widgets (content-pane aware) ──────────────────────────────────────────
 
     def _prompt_input(
@@ -472,8 +697,9 @@ class EpicTUI:
         while True:
             self._paint_shell(title, logo=False)
             ch_, cw = self._content_size()
-            self._content_write(0, 0, "Up/Down select · Enter confirm · Esc back", _attr(Theme.DIM))
-            visible = max(1, ch_ - 3)
+            row0 = self._draw_info_box(0)
+            self._content_write(row0, 0, "Up/Down select · Enter confirm · Esc back", _attr(Theme.DIM))
+            visible = max(1, ch_ - row0 - 3)
             start = max(0, min(idx - visible // 2, max(0, len(items) - visible)))
             for i, (_, label, desc) in enumerate(items[start : start + visible]):
                 n = start + i
@@ -485,9 +711,11 @@ class EpicTUI:
                 else:
                     line = f"      [{num}] {label}"
                     attr = _attr(Theme.NORMAL)
-                self._content_write(2 + i, 0, line.ljust(min(40, cw)), attr)
+                self._content_write(row0 + 2 + i, 0, line.ljust(min(40, cw)), attr)
                 if selected and desc:
-                    self._content_write(2 + i, min(42, cw // 2), f":: {desc}"[: cw // 2], _attr(Theme.DIM))
+                    self._content_write(
+                        row0 + 2 + i, min(42, cw // 2), f":: {desc}"[: cw // 2], _attr(Theme.DIM)
+                    )
             self._footer(f"##  {title}  |  Esc back  ##")
             self._stdscr.refresh()
             ch = self._stdscr.getch()
@@ -521,7 +749,8 @@ class EpicTUI:
         while True:
             self._paint_shell(title, logo=False)
             ch_, cw = self._content_size()
-            self._content_write(0, 0, "Space toggle | Enter edit/run | Esc cancel", _attr(Theme.DIM))
+            row0 = self._draw_info_box(0)
+            self._content_write(row0, 0, "Space toggle | Enter edit/run | Esc cancel", _attr(Theme.DIM))
             for i, key in enumerate(keys):
                 selected = i == idx
                 if key in opts:
@@ -532,9 +761,9 @@ class EpicTUI:
                     shown = val if len(val) <= 36 else val[:33] + "..."
                     line = f"  > {field_labels[key]}: {shown}"
                 attr = _attr(Theme.HIGHLIGHT, True) if selected else _attr(Theme.NORMAL)
-                self._content_write(2 + i, 0, line.ljust(min(60, cw)), attr)
+                self._content_write(row0 + 2 + i, 0, line.ljust(min(60, cw)), attr)
 
-            cy = 2 + len(keys) + 1
+            cy = row0 + 2 + len(keys) + 1
             for j, lab in enumerate((">>:: RUN SCAN", "    Cancel")):
                 sel = idx == len(keys) + j
                 attr = _attr(Theme.HIGHLIGHT, True) if sel else _attr(Theme.SUCCESS if j == 0 else Theme.DIM)
@@ -545,7 +774,7 @@ class EpicTUI:
 
             if editing and keys[idx] in fields:
                 new_val = self._prompt_input(
-                    2 + idx, 4 + len(field_labels[keys[idx]]),
+                    row0 + 2 + idx, 4 + len(field_labels[keys[idx]]),
                     min(36, cw - 20), fields[keys[idx]],
                 )
                 if new_val is not None:
@@ -578,12 +807,13 @@ class EpicTUI:
 
     def _ask_target(self, prompt: str = "Target") -> Optional[str]:
         self._paint_shell("TARGET INPUT", logo=False)
-        self._content_write(0, 0, prompt, _attr(Theme.ACCENT, True))
-        self._content_write(1, 0, "Type value, Enter confirm, Esc cancel", _attr(Theme.DIM))
+        row0 = self._draw_info_box(0)
+        self._content_write(row0, 0, prompt, _attr(Theme.ACCENT, True))
+        self._content_write(row0 + 1, 0, "Type value, Enter confirm, Esc cancel", _attr(Theme.DIM))
         self._footer()
         self._stdscr.refresh()
         _, cw = self._content_size()
-        raw = self._prompt_input(3, 0, min(56, cw - 2), "", "> ")
+        raw = self._prompt_input(row0 + 3, 0, min(56, cw - 2), "", "> ")
         if raw is None:
             return None
         clean = _sanitize_target(raw)
@@ -669,18 +899,19 @@ class EpicTUI:
         try:
             while not done.is_set():
                 self._paint_shell("SCANNING", logo=False)
+                row0 = self._draw_info_box(0)
                 frame = frames[i % len(frames)]
                 spin = radar[i % len(radar)]
-                self._content_write(1, 0, f" {spin}  {frame}  {label}", _attr(Theme.WARN, True))
-                self._content_write(3, 0, "################################", _attr(Theme.BORDER))
-                self._content_write(4, 0, "#  RECON IN PROGRESS...        #", _attr(Theme.TITLE, True))
-                self._content_write(5, 0, "################################", _attr(Theme.BORDER))
+                self._content_write(row0 + 1, 0, f" {spin}  {frame}  {label}", _attr(Theme.WARN, True))
+                self._content_write(row0 + 3, 0, "################################", _attr(Theme.BORDER))
+                self._content_write(row0 + 4, 0, "#  RECON IN PROGRESS...        #", _attr(Theme.TITLE, True))
+                self._content_write(row0 + 5, 0, "################################", _attr(Theme.BORDER))
                 log_lines = result.get("log") or log_buf.getvalue()
                 last = log_lines.strip().splitlines()[-1] if log_lines.strip() else ""
                 if last:
                     _, cw = self._content_size()
-                    self._content_write(7, 0, f"> {last}"[:cw], _attr(Theme.DIM))
-                self._footer("##  Please wait — cancel mid-scan not supported  ##")
+                    self._content_write(row0 + 7, 0, f"> {last}"[:cw], _attr(Theme.DIM))
+                self._footer("##  Please wait -- cancel mid-scan not supported  ##")
                 self._stdscr.refresh()
                 self._stdscr.getch()
                 i += 1
@@ -711,11 +942,18 @@ class EpicTUI:
 
     def _screen_main_menu(self) -> None:
         while True:
+            mid, label, desc = MAIN_MENU[self.menu_idx]
             if self._use_split():
-                self._paint_shell("HOME", logo=True)
-                _, _, desc = MAIN_MENU[self.menu_idx]
+                if mid == "quit":
+                    self._paint_shell("HOME", logo=True)
+                else:
+                    self._paint_shell(label.upper(), logo=False)
+                    self._active_module = mid
+                    row = self._draw_info_box(0)
+                    self._content_write(row, 0, f":: {desc}", _attr(Theme.ACCENT))
+                    self._content_write(row + 2, 0, "Enter open · Esc/q quit", _attr(Theme.DIM))
                 self._footer(
-                    f"##  [{self.menu_idx + 1:02d}] {MAIN_MENU[self.menu_idx][1]}  —  {desc}  |  Enter open  |  q quit  ##"
+                    f"##  [{self.menu_idx + 1:02d}] {label}  --  {desc}  |  Enter open  |  q quit  ##"
                 )
             else:
                 self._paint_shell("MAIN MENU", logo=False)
@@ -725,21 +963,21 @@ class EpicTUI:
                     0,
                     min(self.menu_idx - visible // 2, max(0, len(MAIN_MENU) - visible)),
                 )
-                for i, (_, label, desc) in enumerate(MAIN_MENU[start : start + visible]):
+                for i, (_, mlabel, mdesc) in enumerate(MAIN_MENU[start : start + visible]):
                     n = start + i
                     selected = n == self.menu_idx
                     num = f"{n + 1:02d}"
                     if selected:
                         self._content_write(
                             i, 0,
-                            f"  >:: [{num}] {label}".ljust(min(36, cw)),
+                            f"  >:: [{num}] {mlabel}".ljust(min(36, cw)),
                             _attr(Theme.HIGHLIGHT, True),
                         )
                         self._content_write(
-                            i, min(38, cw // 2), f":: {desc}"[: cw // 2], _attr(Theme.DIM)
+                            i, min(38, cw // 2), f":: {mdesc}"[: cw // 2], _attr(Theme.DIM)
                         )
                     else:
-                        self._content_write(i, 0, f"      [{num}] {label}", _attr(Theme.NORMAL))
+                        self._content_write(i, 0, f"      [{num}] {mlabel}", _attr(Theme.NORMAL))
                 self._footer("##  Up/Down  |  Enter open  |  q quit  ##")
             self._stdscr.refresh()
 
@@ -810,7 +1048,11 @@ class EpicTUI:
         }
         handler = dispatch.get(choice)
         if handler:
-            handler()
+            self._active_module = choice
+            try:
+                handler()
+            finally:
+                self._active_module = None
 
     def _apply_api_keys(self) -> None:
         from modules.host_intel import HostIntel
@@ -865,7 +1107,7 @@ class EpicTUI:
 
     def _screen_full(self) -> None:
         type_items = [(t, t.capitalize(), f"Full {t} scan") for t in FULL_TYPES]
-        scan_type = self._select_list("Full Scan — type", type_items)
+        scan_type = self._select_list("Full Scan -- type", type_items)
         if not scan_type:
             return
         target = self._ask_target(f"Target ({scan_type})")
@@ -1195,7 +1437,7 @@ class EpicTUI:
         from modules.crypto_intel import CHAIN_GROUPS
         # Defaults: auto on; evm off (opt-in multi-sweep)
         toggles = [("auto", "Auto (detected chain only)", True)]
-        toggles.append(("evm", "EVM — all ETH L1/L2 as one", False))
+        toggles.append(("evm", "EVM -- all ETH L1/L2 as one", False))
         for gid, meta in sorted(CHAIN_GROUPS.items()):
             if gid == "evm":
                 continue
@@ -1394,8 +1636,9 @@ class EpicTUI:
 
             self._paint_shell("SAVED REPORTS", logo=False)
             ch_, cw = self._content_size()
-            self._content_write(0, 0, "Enter view | d delete | D delete all | Esc back", _attr(Theme.DIM))
-            visible = max(1, ch_ - 3)
+            row0 = self._draw_info_box(0)
+            self._content_write(row0, 0, "Enter view | d delete | D delete all | Esc back", _attr(Theme.DIM))
+            visible = max(1, ch_ - row0 - 3)
             idx = max(0, min(idx, len(items) - 1))
             start = max(0, min(idx - visible // 2, max(0, len(items) - visible)))
             for i, (_, label, desc) in enumerate(items[start : start + visible]):
@@ -1403,10 +1646,10 @@ class EpicTUI:
                 selected = n == idx
                 num = f"{n + 1:02d}"
                 if selected:
-                    self._content_write(2 + i, 0, f"  >:: [{num}] {label}".ljust(min(48, cw)), _attr(Theme.HIGHLIGHT, True))
-                    self._content_write(2 + i, min(50, cw - 12), desc[:12], _attr(Theme.DIM))
+                    self._content_write(row0 + 2 + i, 0, f"  >:: [{num}] {label}".ljust(min(48, cw)), _attr(Theme.HIGHLIGHT, True))
+                    self._content_write(row0 + 2 + i, min(50, cw - 12), desc[:12], _attr(Theme.DIM))
                 else:
-                    self._content_write(2 + i, 0, f"      [{num}] {label}", _attr(Theme.NORMAL))
+                    self._content_write(row0 + 2 + i, 0, f"      [{num}] {label}", _attr(Theme.NORMAL))
             self._footer("##  Enter view  |  d delete  |  D wipe all  |  Esc  ##")
             self._stdscr.refresh()
 
