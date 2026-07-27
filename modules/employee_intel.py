@@ -46,31 +46,25 @@ class EmployeeIntel:
         return employees
     
     def _discover_from_linkedin(self, company: str) -> List[Dict]:
-        """Discover employees from LinkedIn (simulated - requires API access)"""
-        employees = []
-        
-        # Note: Real LinkedIn scraping requires authentication cookies (JSESSIONID, li-at)
-        # This is a placeholder structure - in production you'd use LinkedIn API or authenticated scraping
-        
-        # For demonstration, we'll try to find public LinkedIn company pages
-        try:
-            # Search for company LinkedIn page
-            search_url = f"https://www.linkedin.com/search/results/companies/?keywords={quote(company)}"
-            # In production, you'd parse the results with authenticated session
-            
-            # Placeholder employee structure
-            employees.append({
-                'name': 'Employee Name',
-                'title': 'Job Title',
-                'company': company,
-                'linkedin_url': f"https://www.linkedin.com/in/placeholder",
-                'email': None,
-                'social_profiles': {}
-            })
-        except:
-            pass
-        
-        return employees
+        """
+        LinkedIn people search requires auth — return public pivot URLs only.
+        Real employee names come from GitHub/GitLab/website methods.
+        """
+        q = quote(company)
+        return [{
+            "name": None,
+            "title": None,
+            "company": company,
+            "linkedin_url": None,
+            "email": None,
+            "social_profiles": {},
+            "pivots": {
+                "company_search": f"https://www.linkedin.com/search/results/companies/?keywords={q}",
+                "people_search": f"https://www.linkedin.com/search/results/people/?keywords={q}",
+                "google_dork": f"https://www.google.com/search?q=site%3Alinkedin.com%2Fin+{q}",
+            },
+            "note": "LinkedIn scraping blocked without session; use pivots manually or GH/GL discovery",
+        }]
     
     def _discover_from_github(self, company: str) -> List[Dict]:
         """Discover employees from GitHub"""
@@ -350,6 +344,9 @@ class EmployeeIntel:
         print(f"  [*] Discovering employees from website...")
         website_employees = self._discover_from_website(company)
         results['employees'].extend(website_employees)
+
+        print(f"  [*] LinkedIn public pivots...")
+        results['linkedin_pivots'] = self._discover_from_linkedin(company)
         
         # Remove duplicates
         seen = set()

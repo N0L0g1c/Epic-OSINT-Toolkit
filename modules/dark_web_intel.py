@@ -221,21 +221,46 @@ class DarkWebIntel:
         return analysis
     
     def search_onion_directories(self, query: str) -> List[Dict]:
-        """Search onion directories for .onion sites"""
+        """Search clearnet onion indexes (Ahmia) — works without Tor for discovery."""
         results = []
-        
-        # Common onion directories (these would need to be accessible)
-        directories = [
-            'http://oniondirv3zqjq.onion',
-            'http://underdj5ziov3ic7.onion',
-            'http://torchdeedp3i2jigzjdmfpn5ttjhthh5wbmda2rr3jvqjg5p77c54dqd.onion'
-        ]
-        
-        # Note: This is a placeholder - actual implementation would require
-        # access to these directories which may not be available
-        print("  [*] Onion directory search requires active Tor connection")
-        print("  [*] Directories may be offline or require specific access")
-        
+        q = (query or "").strip()
+        if not q or len(q) > 100:
+            return results
+        try:
+            from urllib.parse import quote
+            # Ahmia clearnet search
+            url = f"https://ahmia.fi/search/?q={quote(q)}"
+            # Use a plain session (not Tor) for clearnet index
+            r = requests.get(url, headers=self.headers, timeout=20)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                for a in soup.select("a"):
+                    href = a.get("href") or ""
+                    text = (a.get_text() or "").strip()
+                    onion = None
+                    m = re.search(r"([a-z2-7]{16,56}\.onion)", href + " " + text, re.I)
+                    if m:
+                        onion = m.group(1).lower()
+                    if onion:
+                        results.append({
+                            "onion": onion,
+                            "title": text[:200] or onion,
+                            "source": "ahmia.fi",
+                            "url": f"http://{onion}",
+                        })
+                # de-dupe
+                seen = set()
+                uniq = []
+                for item in results:
+                    if item["onion"] not in seen:
+                        seen.add(item["onion"])
+                        uniq.append(item)
+                results = uniq[:50]
+        except Exception as exc:
+            print(f"  [!] Ahmia search failed: {exc}")
+        # Optional Tor-only directories when Tor enabled
+        if self.use_tor and not results:
+            print("  [*] No Ahmia hits; Tor directory crawl skipped (indexes unstable)")
         return results
     
     def map_onion_links(self, onion_url: str, max_depth: int = 2) -> Dict:

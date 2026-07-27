@@ -217,45 +217,42 @@ class URLHunter:
         return None
     
     def find_shortened_urls(self, domain: str) -> List[Dict]:
-        """Find shortened URLs related to domain using URLTeam archives"""
-        print(f"  [*] Searching URLTeam archives for: {domain}")
-        
-        # Search with domain as keyword
+        """Find URLs via local URLTeam archives, else Wayback CDX."""
+        print(f"  [*] Searching archives / Wayback for: {domain}")
         results = self.search_urlteam_archives([domain], date="latest")
-        
-        # Also search for common patterns
-        patterns = [
-            f"{domain},admin",
-            f"{domain},password",
-            f"{domain},token",
-            f"docs.google.com/a/{domain}",
-            f"drive.google.com/a/{domain}"
-        ]
-        
-        for pattern in patterns:
-            pattern_results = self.search_urlteam_archives([pattern], date="latest")
-            results.extend(pattern_results)
-        
+        if not results:
+            results = self._wayback_urls(domain)
         return results
-    
+
     def find_exposed_urls(self, domain: str) -> List[Dict]:
-        """Find exposed URLs (pastebins, code repos, etc.)"""
-        exposed = []
-        
-        # Search for common exposed URL patterns
-        keywords = [
-            f"{domain}",
-            f"{domain},password",
-            f"{domain},token",
-            f"{domain},secret",
-            f"{domain},api",
-            f"{domain},key"
-        ]
-        
-        results = self.search_urlteam_archives(keywords, date="latest")
-        exposed.extend(results)
-        
+        """Find interesting / exposed historical URLs."""
+        exposed = self.search_urlteam_archives(
+            [domain, f"{domain},password", f"{domain},token", f"{domain},secret"],
+            date="latest",
+        )
+        if not exposed:
+            wb = self._wayback_urls(domain, interesting_only=True)
+            exposed.extend(wb)
         return exposed
+
+    def _wayback_urls(self, domain: str, interesting_only: bool = False) -> List[Dict]:
+        try:
+            from modules.wayback_intel import WaybackIntel
+            data = WaybackIntel().hunt(domain, limit=150, interesting_only=interesting_only)
+            return [
+                {
+                    "url": u.get("url"),
+                    "keywords": [domain],
+                    "shortener": None,
+                    "timestamp": u.get("timestamp"),
+                    "wayback": u.get("wayback"),
+                    "source": "wayback",
+                }
+                for u in (data.get("urls") or [])
+            ]
+        except Exception as exc:
+            print(f"  [!] Wayback fallback failed: {exc}")
+            return []
     
     def expand_short_url(self, short_url: str) -> Optional[str]:
         """Expand a shortened URL to get the full URL"""

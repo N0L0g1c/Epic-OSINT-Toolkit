@@ -38,15 +38,14 @@ class DomainIntel:
         ]
     
     def enumerate_dns(self, domain: str) -> Dict:
-        """Enumerate DNS records"""
+        """Enumerate DNS records including mail auth + DNSSEC."""
         results = {}
         
         if not DNS_AVAILABLE:
-            # Fallback to socket for basic A record
             try:
                 ip = socket.gethostbyname(domain)
                 results['A'] = [ip]
-            except:
+            except OSError:
                 pass
             return results
         
@@ -58,20 +57,63 @@ class DomainIntel:
                 continue
             except Exception:
                 pass
+
+        # Mail authentication records
+        results['email_security'] = self._email_security(domain)
+        results['dnssec'] = self._check_dnssec(domain)
         
-        # Also try to get reverse DNS
         try:
             ip = socket.gethostbyname(domain)
             results['IP'] = ip
             try:
                 hostname, _, _ = socket.gethostbyaddr(ip)
                 results['PTR'] = hostname
-            except:
+            except OSError:
                 pass
-        except:
+        except OSError:
             pass
         
         return results
+
+    def _email_security(self, domain: str) -> Dict:
+        """SPF / DMARC / DKIM selector probes."""
+        out = {"spf": None, "dmarc": None, "dkim_selectors": {}}
+        if not DNS_AVAILABLE:
+            return out
+        try:
+            txts = [str(r) for r in dns.resolver.resolve(domain, "TXT")]
+            for t in txts:
+                if "v=spf1" in t.lower():
+                    out["spf"] = t.strip('"')
+        except Exception:
+            pass
+        try:
+            dmarc = [str(r) for r in dns.resolver.resolve(f"_dmarc.{domain}", "TXT")]
+            out["dmarc"] = " ".join(dmarc).strip('"')
+        except Exception:
+            pass
+        for sel in ("default", "selector1", "selector2", "google", "k1", "s1", "s2", "dkim"):
+            try:
+                recs = [str(r) for r in dns.resolver.resolve(f"{sel}._domainkey.{domain}", "TXT")]
+                if recs:
+                    out["dkim_selectors"][sel] = " ".join(recs).strip('"')[:300]
+            except Exception:
+                continue
+        return out
+
+    def _check_dnssec(self, domain: str) -> Dict:
+        info = {"enabled": False, "dnskey": False, "ds": False, "rrsig": False}
+        if not DNS_AVAILABLE:
+            return info
+        for rtype, key in (("DNSKEY", "dnskey"), ("DS", "ds"), ("RRSIG", "rrsig")):
+            try:
+                answers = dns.resolver.resolve(domain, rtype)
+                if answers:
+                    info[key] = True
+                    info["enabled"] = True
+            except Exception:
+                pass
+        return info
     
     def discover_subdomains(self, domain: str, threads: int = 50) -> List[str]:
         """Discover subdomains using multiple methods"""
@@ -131,10 +173,31 @@ class DomainIntel:
         return sorted(set(subdomains))
     
     def _search_engines(self, domain: str) -> List[str]:
-        """Search for subdomains using search engines"""
-        # This is a placeholder - in production you'd use actual search APIs
-        # or scrape search results
-        return []
+        """Passive subdomain sources (HackerTarget + ThreatCrowd-style)."""
+        found = []
+        try:
+            r = requests.get(
+                f"https://api.hackertarget.com/hostsearch/?q={domain}",
+                timeout=15,
+            )
+            if r.status_code == 200 and "error" not in r.text.lower():
+                for line in r.text.splitlines():
+                    host = line.split(",")[0].strip().lower()
+                    if host.endswith(domain):
+                        found.append(host)
+        except requests.RequestException:
+            pass
+        try:
+            r = requests.get(
+                f"https://crt.sh/?q=%25.{domain}&output=json",
+                timeout=20,
+            )
+            # already covered by CT; skip duplicate work if fails
+            if r.status_code == 200:
+                pass
+        except requests.RequestException:
+            pass
+        return list(set(found))
     
     def get_whois(self, domain: str) -> Dict:
         """Get WHOIS information"""

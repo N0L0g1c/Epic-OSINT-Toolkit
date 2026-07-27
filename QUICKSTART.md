@@ -2,32 +2,22 @@
 
 ## Installation (Windows)
 
-1. Open PowerShell in the `epic-osint-toolkit` directory
-2. Run the setup script:
+1. Open PowerShell in the project directory  
+2. Run:
 ```powershell
 .\setup.ps1
-```
-3. Activate the virtual environment:
-```powershell
 .\venv\Scripts\Activate.ps1
 ```
 
 ## Installation (Linux/Mac)
 
-1. Open terminal in the `epic-osint-toolkit` directory
-2. Run the setup script:
 ```bash
 chmod +x setup.sh
 ./setup.sh
-```
-3. Activate the virtual environment:
-```bash
 source venv/bin/activate
 ```
 
 ## Interactive TUI (recommended)
-
-Launch the keyboard-driven ASCII interface (no arguments needed):
 
 ```bash
 python osint_toolkit.py
@@ -35,50 +25,60 @@ python osint_toolkit.py
 python osint_toolkit.py --tui
 ```
 
-Controls: **↑↓** navigate · **Enter** select · **Space** toggle options · **Esc/q** back
+**Layout (wide terminal):** modules on the **left**, feature pane on the **right** (big logo when idle).
 
-All modules (domain, social, GitHub, crawl, emails, URLs, ports, employees, dark web), settings, and report browsing are available from the menu.
+| Key | Action |
+|-----|--------|
+| ↑↓ / j k | Navigate |
+| Enter | Open module |
+| Space | Toggle options |
+| Esc / q | Back / quit |
+| d / D | Delete report / delete all (Reports) |
 
-## Basic Examples (classic CLI)
+**Modules:** Auto Scan · Full Scan · Domain · IP · ASN · Social · GitHub · Crawl · Emails · URLs · Wayback · Pastes · Dorks · Buckets · Takeover · Favicon · EXIF/Meta · Phone · Ports · Shodan/Censys · Employees · Dark Web · Onion Search · Reports · Settings
 
-### 1. Full Domain Scan
+## CLI examples
+
+### Auto / full
 ```bash
+python osint_toolkit.py -t example.com --auto
 python osint_toolkit.py -t example.com --full
+python osint_toolkit.py -t 8.8.8.8 --type ip --full
 ```
 
-### 2. Social Media Username Search
+### Domain & infra
 ```bash
-python osint_toolkit.py -t username --type username --social
+python osint_toolkit.py -t example.com --dns --subdomains --emails --ports
+python osint_toolkit.py -t example.com --wayback --pastes --ip --asn
+python osint_toolkit.py -t example.com --dorks --buckets --takeover --favicon
 ```
 
-### 3. GitHub Intelligence
+### People & company
 ```bash
-python osint_toolkit.py -t githubuser --github
+python osint_toolkit.py -t johndoe --type username --social --github
+python osint_toolkit.py -t "Acme Corp" --type company --employees --leaks
+python osint_toolkit.py -t "+15551234567" --phone
 ```
 
-### 4. Port Scanning
+### Meta / dark web
 ```bash
-python osint_toolkit.py -t 192.168.1.1 --ports
+python osint_toolkit.py -t https://example.com/img.jpg --meta
+python osint_toolkit.py -t "example.onion" --type onion --dark-web --tor --onion-search
 ```
 
-### 5. Email Discovery
+### Optional API keys
 ```bash
-python osint_toolkit.py -t example.com --emails
-```
-
-### 6. Custom Scan
-```bash
-python osint_toolkit.py -t example.com --dns --subdomains --ports --emails
+python osint_toolkit.py -t 1.2.3.4 --shodan --shodan-key YOUR_KEY
+python osint_toolkit.py -t example.com --pastes --github-token YOUR_TOKEN
+python osint_toolkit.py -t "Acme" --type company --leaks --hibp-api-key YOUR_KEY
 ```
 
 ## Output
 
-All reports are saved in the `reports/` directory in your chosen format (JSON, TXT, or HTML).
+Saved under `reports/` as JSON, TXT, or HTML (`-f`). Open or delete them from the TUI **Reports** tab.
 
-## Need Help?
+## Help
 
-Run with `--help` to see all available options:
 ```bash
 python osint_toolkit.py --help
 ```
-

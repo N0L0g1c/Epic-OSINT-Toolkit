@@ -1,5 +1,6 @@
 """Web Crawler Module - Website crawling, directory enumeration, technology detection"""
 
+import json
 import requests
 from bs4 import BeautifulSoup
 import re

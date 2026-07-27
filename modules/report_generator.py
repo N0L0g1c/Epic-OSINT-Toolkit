@@ -2,6 +2,11 @@
 
 from typing import Dict, Any
 from datetime import datetime
+import html as html_lib
+
+
+def _esc(value: Any) -> str:
+    return html_lib.escape(str(value if value is not None else ""), quote=True)
 
 
 class ReportGenerator:
@@ -129,6 +134,39 @@ class ReportGenerator:
                 for repo in company_data['repositories'][:20]:  # Limit to 20
                     report.append(f"  - {repo.get('name', 'N/A')} ({repo.get('platform', 'N/A')}): {repo.get('url', 'N/A')}")
             report.append("")
+
+        # Extra modules
+        for key, title in (
+            ("website", "WEB CRAWL"),
+            ("urls", "URL HUNT"),
+            ("wayback", "WAYBACK HISTORY"),
+            ("ip", "IP INTELLIGENCE"),
+            ("phone", "PHONE OSINT"),
+            ("pastes", "PASTE / LEAK HUNT"),
+            ("dark_web", "DARK WEB"),
+            ("onion_dirs", "ONION DIRECTORY SEARCH"),
+            ("host_intel", "SHODAN / CENSYS"),
+        ):
+            if key in results.get("results", {}):
+                data = results["results"][key]
+                report.append(title)
+                report.append("-" * 80)
+                if isinstance(data, dict):
+                    for k, v in list(data.items())[:40]:
+                        if isinstance(v, (list, dict)):
+                            report.append(f"  {k}: {len(v) if isinstance(v, (list, dict)) else v}")
+                        else:
+                            report.append(f"  {k}: {v}")
+                report.append("")
+
+        if results.get("correlation"):
+            corr = results["correlation"]
+            report.append("CORRELATION")
+            report.append("-" * 80)
+            report.append(f"  Detected type: {corr.get('detected_type')}")
+            for k, n in (corr.get("counts") or {}).items():
+                report.append(f"  {k}: {n}")
+            report.append("")
         
         report.append("=" * 80)
         report.append("END OF REPORT")
@@ -164,9 +202,9 @@ class ReportGenerator:
         
         html.append("<div class='header'>")
         html.append("<h1>EPIC OSINT TOOLKIT - INTELLIGENCE REPORT</h1>")
-        html.append(f"<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
-        html.append(f"<p>Target: {results.get('target', 'Unknown')}</p>")
-        html.append(f"<p>Scan Type: {results.get('scan_type', 'Unknown')}</p>")
+        html.append(f"<p>Generated: {_esc(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}</p>")
+        html.append(f"<p>Target: {_esc(results.get('target', 'Unknown'))}</p>")
+        html.append(f"<p>Scan Type: {_esc(results.get('scan_type', 'Unknown'))}</p>")
         html.append("</div>")
         
         # Domain Intelligence
@@ -289,6 +327,41 @@ class ReportGenerator:
                 html.append("</table>")
             
             html.append("</div>")
+
+        for key, title in (
+            ("website", "Web Crawl"),
+            ("urls", "URL Hunt"),
+            ("wayback", "Wayback History"),
+            ("ip", "IP Intelligence"),
+            ("phone", "Phone OSINT"),
+            ("pastes", "Paste / Leak Hunt"),
+            ("dark_web", "Dark Web"),
+            ("host_intel", "Shodan / Censys"),
+        ):
+            if key in results.get("results", {}):
+                data = results["results"][key]
+                html.append("<div class='section'>")
+                html.append(f"<h2>{title}</h2>")
+                if isinstance(data, dict):
+                    html.append("<table>")
+                    for k, v in list(data.items())[:30]:
+                        if isinstance(v, (list, dict)):
+                            val = f"{len(v)} items"
+                        else:
+                            val = str(v)[:300]
+                        html.append(f"<tr><td>{_esc(k)}</td><td>{_esc(val)}</td></tr>")
+                    html.append("</table>")
+                html.append("</div>")
+
+        if results.get("correlation"):
+            corr = results["correlation"]
+            html.append("<div class='section'>")
+            html.append("<h2>Correlation</h2>")
+            html.append(f"<p>Detected type: {_esc(corr.get('detected_type'))}</p>")
+            html.append("<ul>")
+            for k, n in (corr.get("counts") or {}).items():
+                html.append(f"<li>{_esc(k)}: {_esc(n)}</li>")
+            html.append("</ul></div>")
         
         html.append("</body>")
         html.append("</html>")
@@ -341,6 +414,20 @@ class ReportGenerator:
             print(f"Employees Discovered: {len(company.get('employees', []))}")
             print(f"Leaked Credentials: {len(company.get('leaked_credentials', []))}")
             print(f"Repositories Found: {len(company.get('repositories', []))}")
+
+        if 'wayback' in res:
+            print(f"Wayback URLs: {res['wayback'].get('total', len(res['wayback'].get('urls') or []))}")
+        if 'ip' in res:
+            ip = res['ip']
+            print(f"IP: {ip.get('ip')}  ASN: {(ip.get('asn') or {}).get('asn')}  Risk: {(ip.get('risk') or {}).get('score')}")
+        if 'phone' in res:
+            print(f"Phone: {res['phone'].get('e164')}  Country: {res['phone'].get('country_hint')}")
+        if 'pastes' in res:
+            gh = (res['pastes'].get('github_code') or {})
+            print(f"Paste/code hits: {gh.get('total', 0)}")
+        if results.get('correlation'):
+            c = results['correlation'].get('counts') or {}
+            print(f"Correlated entities: {sum(c.values())}")
         
         print("=" * 60)
 
