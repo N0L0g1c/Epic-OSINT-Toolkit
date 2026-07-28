@@ -189,6 +189,11 @@ MAIN_MENU: List[MenuItem] = [
     ("ip", "IP Intel", "Geo ASN rDNS risk"),
     ("asn", "ASN / Netblocks", "Prefixes peers upstreams"),
     ("related", "Related Domains", "CT SSL same-IP pivots"),
+    ("typosquat", "Typosquats", "Lookalike domain resolve"),
+    ("saas", "SaaS Tenants", "Azure AD Workspace Slack"),
+    ("companybiz", "Company Biz", "Registries EDGAR filings"),
+    ("person", "Person OSINT", "Name seeds + people pivots"),
+    ("packages", "Packages", "npm PyPI crates Docker"),
     ("passive", "Passive DNS", "Historical host/IP"),
     ("abuse", "Abuse / DNSBL", "Reputation lists"),
     ("ioc", "IOC Enrich", "VT / OTX / pivots"),
@@ -250,6 +255,26 @@ MODULE_HELP: Dict[str, str] = {
     "related": (
         "Finds other domains that share certificates, SSL history, or the same IP. "
         "Great for discovering sister sites and infrastructure pivots."
+    ),
+    "typosquat": (
+        "Generates lookalike / typosquat domains (omission, swap, homoglyph, TLD) "
+        "and reports which ones resolve live."
+    ),
+    "saas": (
+        "Checks whether a domain has Azure AD, Google Workspace, Slack, Okta, "
+        "Atlassian, and similar SaaS tenants — useful cloud recon."
+    ),
+    "companybiz": (
+        "Looks up company registries (OpenCorporates), SEC EDGAR tickers, and "
+        "public filing / business search pivots. Distinct from employee discovery."
+    ),
+    "person": (
+        "Parses a full name into username/email seeds, searches GitHub users, "
+        "and builds people-search pivot URLs (no paywall scraping)."
+    ),
+    "packages": (
+        "Searches npm, PyPI, crates.io, RubyGems, and Docker Hub for packages "
+        "or orgs matching a name — supply-chain OSINT."
     ),
     "passive": (
         "Shows historical DNS resolutions (which hosts pointed to which IPs over time) "
@@ -385,7 +410,7 @@ MODULE_HELP: Dict[str, str] = {
     ),
 }
 
-FULL_TYPES = ["domain", "username", "company", "ip", "email", "phone", "onion", "wallet"]
+FULL_TYPES = ["domain", "username", "company", "person", "ip", "email", "phone", "onion", "wallet"]
 DOMAIN_OPTS = [("dns", "DNS enumeration", True), ("subdomains", "Subdomain discovery", True),
                ("whois", "WHOIS lookup", True), ("ssl", "SSL certificate analysis", True)]
 SOCIAL_OPTS = [("search", "Platform search", True), ("email", "Email discovery", True),
@@ -1286,6 +1311,11 @@ class EpicTUI:
             "ip": self._screen_ip,
             "asn": self._screen_asn,
             "related": self._screen_related,
+            "typosquat": self._screen_typosquat,
+            "saas": self._screen_saas,
+            "companybiz": self._screen_company_biz,
+            "person": self._screen_person,
+            "packages": self._screen_packages,
             "passive": self._screen_passive,
             "abuse": self._screen_abuse,
             "ioc": self._screen_ioc,
@@ -1677,6 +1707,59 @@ class EpicTUI:
         try:
             data = self._run_with_spinner(f"Related -> {target}", lambda: self.toolkit.find_related_domains(target))
             self._show_results(self._wrap(target, "domain", {"related_domains": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_typosquat(self) -> None:
+        target = self._ask_target("Domain")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(
+                f"Typosquat -> {target}",
+                lambda: self.toolkit.analyze_typosquats(target, {"limit": 200}),
+            )
+            self._show_results(self._wrap(target, "domain", {"typosquats": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_saas(self) -> None:
+        target = self._ask_target("Domain")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"SaaS -> {target}", lambda: self.toolkit.discover_saas(target))
+            self._show_results(self._wrap(target, "domain", {"saas": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_company_biz(self) -> None:
+        target = self._ask_target("Company name")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Company biz -> {target}", lambda: self.toolkit.analyze_company_biz(target))
+            self._show_results(self._wrap(target, "company", {"company_biz": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_person(self) -> None:
+        target = self._ask_target("Full name")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Person -> {target}", lambda: self.toolkit.analyze_person(target))
+            self._show_results(self._wrap(target, "person", {"person": data}))
+        except Exception as exc:
+            self._scroll_text("Error", str(exc))
+
+    def _screen_packages(self) -> None:
+        target = self._ask_target("Package / org / domain slug")
+        if not target:
+            return
+        try:
+            data = self._run_with_spinner(f"Packages -> {target}", lambda: self.toolkit.search_packages(target))
+            self._show_results(self._wrap(target, "packages", {"packages": data}))
         except Exception as exc:
             self._scroll_text("Error", str(exc))
 

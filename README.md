@@ -21,7 +21,7 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 ## Features
 
 ### Auto-detect & correlation
-- Detect domain, IP, email, phone, username, URL, onion, company, or **wallet**
+- Detect domain, IP, email, phone, username, URL, onion, company, **person**, or **wallet**
 - Correlate emails, domains, IPs, usernames, URLs, and wallets across modules
 
 ### Interactive TUI
@@ -66,6 +66,11 @@ All in one toolkit with **auto target detection**, **entity correlation**, style
 - **Username perms** — name/email local-part permutations  
 - **Image pivots** — reverse-image search URLs  
 - **IOC enrich** — optional VirusTotal / OTX (+ public pivots)  
+- **Company biz** — OpenCorporates + SEC EDGAR tickers + registry pivots  
+- **SaaS tenants** — Azure AD, Google Workspace, Slack, Okta, Atlassian, …  
+- **Typosquats** — lookalike generation + live DNS resolve  
+- **Packages** — npm / PyPI / crates / RubyGems / Docker Hub supply-chain search  
+- **Person OSINT** — full-name seeds, GitHub user hits, people-search pivots  
 - **Crypto / Web3** — selectable `evm` bucket + independent chains; ENS; privacy-coin OSINT  
 - **Screenshots** — headless Chrome/Chromium when installed  
 - **Cases + graph** — investigation folders; JSON/GraphML entity graphs  
@@ -170,6 +175,7 @@ python osint_toolkit.py -t example.com --dns --subdomains --emails --ports
 # New recon modules
 python osint_toolkit.py -t example.com --dorks --buckets --takeover --favicon
 python osint_toolkit.py -t example.com --related --passive-dns --js-secrets --abuse
+python osint_toolkit.py -t example.com --saas --typosquat --packages
 python osint_toolkit.py -t user@example.com --email-accounts --perms
 python osint_toolkit.py -t 8.8.8.8 --ip --asn --ioc --vt-key YOUR_KEY
 python osint_toolkit.py -t https://example.com/photo.jpg --meta --image-pivots
@@ -193,7 +199,8 @@ python osint_toolkit.py --tor-check --tor
 
 # People / company
 python osint_toolkit.py -t johndoe --type username --social --github
-python osint_toolkit.py -t "Acme Corp" --type company --employees --leaks
+python osint_toolkit.py -t "Acme Corp" --type company --employees --leaks --company-biz
+python osint_toolkit.py -t "Jane Doe" --type person --person --perms
 
 # Dark web
 python osint_toolkit.py -t "example.onion" --type onion --dark-web --tor --onion-search
@@ -207,7 +214,7 @@ python osint_toolkit.py -t example.com --full --format html -o reports
 ```
 -t / --target TARGET
 --tui
---type {domain,username,ip,url,company,onion,phone,email,wallet,auto}
+--type {domain,username,ip,url,company,person,onion,phone,email,wallet,auto}
 --full · --auto
 
 Modules:
@@ -218,6 +225,7 @@ Modules:
   --dorks --buckets --takeover --favicon --meta
   --email-accounts --perms --related --js-secrets
   --image-pivots --passive-dns --abuse --ioc --crypto --crypto-chains --screenshot
+  --company-biz --saas --typosquat --packages --person
   --graph --plugin --list-plugins --tor-check
   --employees --leaks
   --comprehensive-crawl --robots --sitemap
@@ -268,6 +276,11 @@ Run `python osint_toolkit.py --help` for the full list.
 | `js_secrets.py` | JS / page secret mining |
 | `email_accounts.py` | Holehe-style account checks |
 | `related_domains.py` | CT / SSL / same-IP |
+| `company_intel.py` | OpenCorporates / SEC EDGAR / business pivots |
+| `saas_intel.py` | Azure AD / Workspace / Slack / Okta tenants |
+| `typosquat_intel.py` | Lookalike domains + DNS resolve |
+| `package_intel.py` | npm / PyPI / crates / RubyGems / Docker Hub |
+| `person_intel.py` | Full-name seeds + people-search pivots |
 | `cases.py` / `graph_export.py` | Cases + GraphML |
 | `plugins_loader.py` | Drop-in plugins |
 | `correlate.py` | Auto-detect + graph |

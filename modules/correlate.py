@@ -29,8 +29,14 @@ _ZEC_T = re.compile(r"^t[13][a-km-zA-HJ-NP-Z1-9]{33}$")
 _ZEC_Z = re.compile(r"^(?:zs1[a-z0-9]{70,90}|zc[a-zA-Z0-9]{90,120})$")
 
 
+_COMPANY_HINT = re.compile(
+    r"\b(?:inc|llc|ltd|corp|corporation|company|co|gmbh|sarl|plc|group|holdings|technologies|tech|labs|limited)\b",
+    re.I,
+)
+
+
 def detect_target_type(raw: str) -> str:
-    """Return one of: email, ip, url, onion, phone, domain, username, company, wallet."""
+    """Return one of: email, ip, url, onion, phone, domain, username, company, person, wallet."""
     t = (raw or "").strip()
     if not t:
         return "username"
@@ -63,6 +69,12 @@ def detect_target_type(raw: str) -> str:
     if _DOMAIN.match(t):
         return "domain"
     if " " in t:
+        tokens = [x for x in t.split() if x]
+        if _COMPANY_HINT.search(t) or len(tokens) >= 4:
+            return "company"
+        # 2–3 alphabetic tokens → likely a person name
+        if 2 <= len(tokens) <= 3 and all(re.match(r"^[\w.\-']+$", x, re.UNICODE) for x in tokens):
+            return "person"
         return "company"
     if _USER.match(t):
         return "username"
@@ -174,6 +186,7 @@ class Correlator:
             "phone": "phones",
             "onion": "domains",
             "company": "usernames",
+            "person": "usernames",
             "wallet": "wallets",
         }
         key = mapping.get(kind)
@@ -191,5 +204,6 @@ class Correlator:
             "phone": "phones",
             "onion": "domains",
             "company": "usernames",
+            "person": "usernames",
             "wallet": "wallets",
         }.get(ttype, "usernames")

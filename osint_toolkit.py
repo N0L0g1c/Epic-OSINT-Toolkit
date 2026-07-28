@@ -45,6 +45,11 @@ from modules.abuse_intel import AbuseIntel
 from modules.ioc_intel import IOCIntel
 from modules.screenshot_intel import ScreenshotIntel
 from modules.crypto_intel import CryptoIntel
+from modules.company_intel import CompanyIntel
+from modules.saas_intel import SaaSIntel
+from modules.typosquat_intel import TyposquatIntel
+from modules.package_intel import PackageIntel
+from modules.person_intel import PersonIntel
 from modules.plugins_loader import PluginLoader
 from modules.http_util import set_rate_limit
 
@@ -98,6 +103,11 @@ class OSINTToolkit:
         self.ioc_intel = IOCIntel(vt_key=vt_key, otx_key=otx_key)
         self.screenshot_intel = ScreenshotIntel()
         self.crypto_intel = CryptoIntel(etherscan_key=etherscan_key)
+        self.company_biz = CompanyIntel()
+        self.saas_intel = SaaSIntel()
+        self.typosquat_intel = TyposquatIntel()
+        self.package_intel = PackageIntel()
+        self.person_intel = PersonIntel()
         self.plugins = PluginLoader()
         self.correlator = Correlator()
         self.report_gen = ReportGenerator()
@@ -486,6 +496,31 @@ class OSINTToolkit:
         print(f"\n[+] Web3 / crypto intel: {target}")
         return self.crypto_intel.analyze(target, options)
 
+    def analyze_company_biz(self, company: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Company / business intel: {company}")
+        return self.company_biz.analyze(company)
+
+    def discover_saas(self, domain: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] SaaS / tenant discovery: {domain}")
+        return self.saas_intel.discover(domain)
+
+    def analyze_typosquats(self, domain: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Typosquat / lookalikes: {domain}")
+        opts = options or {}
+        return self.typosquat_intel.analyze(
+            domain,
+            resolve=bool(opts.get("resolve", True)),
+            limit=int(opts.get("limit", 200)),
+        )
+
+    def search_packages(self, query: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Package / supply-chain: {query}")
+        return self.package_intel.search(query, limit=int((options or {}).get("limit", 8)))
+
+    def analyze_person(self, name: str, options: Optional[Dict[str, Any]] = None) -> Dict:
+        print(f"\n[+] Person OSINT: {name}")
+        return self.person_intel.analyze(name)
+
     def capture_screenshot(self, url: str, options: Optional[Dict[str, Any]] = None) -> Dict:
         print(f"\n[+] Screenshot: {url}")
         out = (options or {}).get("output_dir") or str(self.output_dir / "screenshots")
@@ -574,6 +609,18 @@ class OSINTToolkit:
                 pass
             try:
                 all_results['results']['related_domains'] = self.find_related_domains(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['saas'] = self.discover_saas(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['typosquats'] = self.analyze_typosquats(target, {'limit': 120})
+            except Exception:
+                pass
+            try:
+                all_results['results']['packages'] = self.search_packages(target)
             except Exception:
                 pass
             try:
@@ -681,7 +728,32 @@ class OSINTToolkit:
             all_results['results']['company'] = self.analyze_company(target, {
                 'discover': True, 'check_leaks': True, 'hibp_api_key': None
             })
+            try:
+                all_results['results']['company_biz'] = self.analyze_company_biz(target)
+            except Exception:
+                pass
+            try:
+                all_results['results']['packages'] = self.search_packages(target)
+            except Exception:
+                pass
             all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 15})
+
+        elif scan_type == "person":
+            all_results['results']['person'] = self.analyze_person(target)
+            try:
+                all_results['results']['perms'] = self.generate_username_perms(target)
+            except Exception:
+                pass
+            all_results['results']['pastes'] = self.hunt_pastes(target, {'limit': 15})
+            # Light social on first username seed
+            seeds = (all_results['results']['person'] or {}).get('username_seeds') or []
+            if seeds:
+                try:
+                    all_results['results']['social'] = self.gather_social_intel(seeds[0], {
+                        'search': True, 'email': False, 'associated': False
+                    })
+                except Exception:
+                    pass
 
         all_results['correlation'] = self.correlate_results(all_results)
         try:
@@ -749,7 +821,7 @@ Examples:
     parser.add_argument('-t', '--target', help='Target (domain, username, IP, company, etc.)')
     parser.add_argument('--tui', action='store_true', help='Launch interactive ASCII/ANSI TUI')
     parser.add_argument('--type',
-                       choices=['domain', 'username', 'ip', 'url', 'company', 'onion', 'phone', 'email', 'wallet', 'auto'],
+                       choices=['domain', 'username', 'ip', 'url', 'company', 'person', 'onion', 'phone', 'email', 'wallet', 'auto'],
                        default='auto',
                        help='Type of target (default: auto-detect)')
     parser.add_argument('--full', action='store_true', help='Run full comprehensive scan')
@@ -801,6 +873,11 @@ Examples:
     parser.add_argument('--chains', default='auto',
                         help='Crypto chain groups: auto|all|evm|bitcoin|solana|… (comma-separated)')
     parser.add_argument('--screenshot', action='store_true', help='Headless Chrome screenshot if installed')
+    parser.add_argument('--company-biz', action='store_true', help='Company registry / business intel')
+    parser.add_argument('--saas', action='store_true', help='SaaS / cloud tenant discovery')
+    parser.add_argument('--typosquat', action='store_true', help='Typosquat / lookalike domain hunt')
+    parser.add_argument('--packages', action='store_true', help='Package registry / supply-chain search')
+    parser.add_argument('--person', action='store_true', help='Person / full-name OSINT pivots')
     parser.add_argument('--graph', action='store_true', help='Export correlation graph (JSON + GraphML)')
     parser.add_argument('--tor-check', action='store_true', help='Check Tor SOCKS health')
     parser.add_argument('--plugin', help='Run a plugin by id from modules/plugins/')
@@ -991,6 +1068,16 @@ Examples:
             if args.screenshot:
                 url = args.target if args.target.startswith('http') else f"https://{args.target}"
                 results['results']['screenshot'] = toolkit.capture_screenshot(url)
+            if args.company_biz:
+                results['results']['company_biz'] = toolkit.analyze_company_biz(args.target)
+            if args.saas:
+                results['results']['saas'] = toolkit.discover_saas(args.target)
+            if args.typosquat:
+                results['results']['typosquats'] = toolkit.analyze_typosquats(args.target)
+            if args.packages:
+                results['results']['packages'] = toolkit.search_packages(args.target)
+            if args.person:
+                results['results']['person'] = toolkit.analyze_person(args.target)
             if args.plugin:
                 results['results']['plugin'] = toolkit.run_plugin(args.plugin, args.target)
             
@@ -1002,7 +1089,8 @@ Examples:
                     args.dorks, args.asn, args.buckets, args.takeover, args.favicon, args.meta,
                     args.email_accounts, args.perms, args.related, args.js_secrets,
                     args.image_pivots, args.passive_dns, args.abuse, args.ioc, args.crypto,
-                    args.screenshot,
+                    args.screenshot, args.company_biz, args.saas, args.typosquat, args.packages,
+                    args.person,
                     bool(args.plugin),
                 ]
                 run_domain = args.dns or args.subdomains or args.whois or args.ssl or not any(module_flags)
@@ -1138,6 +1226,21 @@ Examples:
                     'check_leaks': args.leaks or not args.employees,
                     'hibp_api_key': args.hibp_api_key
                 })
+                if args.company_biz or not any([args.employees, args.leaks, args.packages]):
+                    if 'company_biz' not in results['results']:
+                        results['results']['company_biz'] = toolkit.analyze_company_biz(args.target)
+
+            elif scan_type == 'person':
+                if 'person' not in results['results']:
+                    results['results']['person'] = toolkit.analyze_person(args.target)
+                if args.perms or args.social:
+                    if args.perms:
+                        results['results']['perms'] = toolkit.generate_username_perms(args.target)
+                    if args.social:
+                        seeds = (results['results'].get('person') or {}).get('username_seeds') or [args.target.split()[0]]
+                        results['results']['social'] = toolkit.gather_social_intel(seeds[0], {
+                            'search': True, 'email': False, 'associated': False
+                        })
 
             if args.correlate or results.get('results'):
                 results['correlation'] = toolkit.correlate_results(results)

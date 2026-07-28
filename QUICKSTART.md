@@ -35,7 +35,7 @@ python osint_toolkit.py --tui
 | Esc / q | Back / quit |
 | d / D | Delete report / delete all (Reports) |
 
-**Modules:** Auto · Full · Domain · IP · ASN · Related Domains · Passive DNS · Abuse · IOC · Crypto/Web3 · Social · Perms · GitHub · Crawl · JS Secrets · Screenshot · Emails · Email Accounts · URLs · Wayback · Pastes · Dorks · Buckets · Takeover · Favicon · EXIF/Meta · Image Pivots · Phone · Ports · Shodan/Censys · Employees · Dark Web · Onion Search · Tor Health · Graph · Cases · Plugins · Reports · Settings
+**Modules:** Auto · Full · Domain · IP · ASN · Related Domains · Typosquats · SaaS Tenants · Company Biz · Person · Packages · Passive DNS · Abuse · IOC · Crypto/Web3 · Social · Perms · GitHub · Crawl · JS Secrets · Screenshot · Emails · Email Accounts · URLs · Wayback · Pastes · Dorks · Buckets · Takeover · Favicon · EXIF/Meta · Image Pivots · Phone · Ports · Shodan/Censys · Employees · Dark Web · Onion Search · Tor Health · Graph · Cases · Plugins · Reports · Settings
 
 ## CLI examples
 
@@ -58,8 +58,14 @@ python osint_toolkit.py -t example.com --related --passive-dns --js-secrets --ab
 ```bash
 python osint_toolkit.py -t johndoe --type username --social --github --perms
 python osint_toolkit.py -t user@example.com --email-accounts
-python osint_toolkit.py -t "Acme Corp" --type company --employees --leaks
+python osint_toolkit.py -t "Acme Corp" --type company --employees --leaks --company-biz
+python osint_toolkit.py -t "Jane Doe" --type person --person --perms
 python osint_toolkit.py -t "+15551234567" --phone
+```
+
+### Domain extras
+```bash
+python osint_toolkit.py -t example.com --saas --typosquat --packages
 ```
 
 ### Web3 / crypto
