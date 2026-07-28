@@ -7,14 +7,15 @@ Heavy ASCII/ANSI. Pure stdlib (curses).
 from __future__ import annotations
 
 import curses
-import io
 import json
 import re
 import threading
 import traceback
+import unicodedata
+from collections import deque
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple, Union
 
 from modules.tui_style import Line, format_json_file, format_scan_report
 
@@ -23,6 +24,42 @@ from modules.tui_style import Line, format_json_file, format_scan_report
 SPLIT_MIN_W = 100
 SPLIT_MIN_H = 22
 LEFT_W = 36
+FOOTER_H = 2
+ACTIVITY_H = 6  # bordered panel above footer (locked; does not scroll the body)
+ACTIVITY_MAX = 200
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _char_cols(ch: str) -> int:
+    """Terminal column width for one character (0 / 1 / 2)."""
+    if ch in "\t":
+        return 4
+    o = ord(ch)
+    if o < 32 or o == 127:
+        return 0
+    cat = unicodedata.category(ch)
+    if cat in ("Mn", "Me", "Cf"):
+        return 0
+    if unicodedata.east_asian_width(ch) in ("F", "W"):
+        return 2
+    return 1
+
+
+def _clip_cols(text: str, max_cols: int) -> str:
+    """Truncate so rendered width fits max_cols (prevents curses line-wrap)."""
+    if max_cols <= 0 or not text:
+        return ""
+    out: List[str] = []
+    used = 0
+    for ch in text:
+        cw = _char_cols(ch)
+        if cw <= 0:
+            continue
+        if used + cw > max_cols:
+            break
+        out.append(ch)
+        used += cw
+    return "".join(out)
 
 # ── ASCII art ─────────────────────────────────────────────────────────────────
 
@@ -369,6 +406,45 @@ DARKWEB_OPTS = [("analyze", "Analyze .onion", True), ("crawl", "Crawl .onion", F
                 ("map_links", "Map link relationships", False)]
 
 
+class _ActivityCapture:
+    """Thread-safe stdout/stderr sink that feeds the TUI activity log line-by-line."""
+
+    def __init__(self, tui: "EpicTUI") -> None:
+        self._tui = tui
+        self._buf = ""
+        self._lock = threading.Lock()
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        with self._lock:
+            self._buf += s
+            while "\n" in self._buf:
+                line, self._buf = self._buf.split("\n", 1)
+                self._tui._append_activity(line)
+        return len(s)
+
+    def flush(self) -> None:
+        return None
+
+    def flush_remainder(self) -> None:
+        with self._lock:
+            leftover = self._buf
+            self._buf = ""
+        if leftover.strip():
+            self._tui._append_activity(leftover)
+
+    def isatty(self) -> bool:
+        return False
+
+    @property
+    def encoding(self) -> str:
+        return "utf-8"
+
+    def fileno(self) -> int:
+        raise OSError("ActivityCapture has no fileno")
+
+
 class EpicTUI:
     """Split-pane keyboard OSINT interface."""
 
@@ -398,6 +474,10 @@ class EpicTUI:
         self.panel_title = "HOME"
         self._content: Optional[Rect] = None  # active right/full content rect
         self._active_module: Optional[str] = None
+        self._activity_lines: Deque[str] = deque(maxlen=ACTIVITY_MAX)
+        self._activity_lock = threading.Lock()
+        self._capture: Optional[_ActivityCapture] = None
+        self._act_win: Optional[Any] = None  # locked overlay; never scrolls with report
 
     def run(self) -> None:
         curses.wrapper(self._main)
@@ -407,13 +487,36 @@ class EpicTUI:
         curses.curs_set(0)
         stdscr.keypad(True)
         stdscr.timeout(-1)
+        # Prevent physical terminal scroll from corrupting the locked layout
+        try:
+            stdscr.scrollok(False)
+            stdscr.idlok(False)
+        except curses.error:
+            pass
         try:
             curses.curs_set(0)
-            # Prefer full terminal; ignore SIGWINCH mid-draw errors
         except curses.error:
             pass
         _init_colors()
-        self._screen_main_menu()
+        # Capture ALL print() for the TUI lifetime (spinner, correlate, save, etc.)
+        # Curses still paints via the tty fd; only Python sys.stdout/err are redirected.
+        self._capture = _ActivityCapture(self)
+        with redirect_stdout(self._capture), redirect_stderr(self._capture):
+            self._screen_main_menu()
+        self._capture.flush_remainder()
+
+    def _hard_resync(self) -> None:
+        """Force a full terminal redraw after any risk of tty desync."""
+        if not self._stdscr:
+            return
+        if self._capture is not None:
+            self._capture.flush_remainder()
+        self._act_win = None
+        try:
+            self._stdscr.clear()
+            self._stdscr.redrawwin()
+        except curses.error:
+            pass
 
     # ── geometry ──────────────────────────────────────────────────────────────
 
@@ -424,11 +527,21 @@ class EpicTUI:
         h, w = self._size()
         return w >= SPLIT_MIN_W and h >= SPLIT_MIN_H
 
+    def _activity_height(self) -> int:
+        """Reserve a locked activity panel when the terminal is tall enough."""
+        h, _ = self._size()
+        return min(ACTIVITY_H, max(0, h - FOOTER_H - 5))
+
+    def _activity_top(self) -> int:
+        """Absolute row where the locked activity panel begins."""
+        h, _ = self._size()
+        return h - FOOTER_H - self._activity_height()
+
     def _layout(self) -> Tuple[bool, Optional[Rect], Rect]:
         """Return (split, left_rect|None, content_rect). Content is right pane or full."""
         h, w = self._size()
-        foot = 2
-        body_h = max(5, h - foot)
+        act = self._activity_height()
+        body_h = max(5, h - FOOTER_H - act)
         if self._use_split():
             left_w = min(LEFT_W, max(28, w // 3))
             left = (0, 0, body_h, left_w)
@@ -445,17 +558,34 @@ class EpicTUI:
     # ── primitives ────────────────────────────────────────────────────────────
 
     def _safe_addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
+        """Write text without wrapping. Wrap would push rows and smash the layout."""
         h, w = self._size()
-        if y < 0 or y >= h or x >= w or x < 0:
+        if y < 0 or y >= h or x < 0 or x >= w:
             return
-        text = text[: max(0, w - x - 1)]
+        text = (text or "").replace("\n", " ").replace("\r", "")
+        if not text:
+            return
+        # Single-cell write (borders) may sit on the last column; catch EOVERFLOW
+        if len(text) == 1 and _char_cols(text) == 1 and x == w - 1:
+            try:
+                self._stdscr.addch(y, x, text, attr)
+            except curses.error:
+                pass
+            return
+        # Leave last column free so curses never wraps to the next line
+        clipped = _clip_cols(text, max(0, w - x - 1))
+        if not clipped:
+            return
         try:
-            self._stdscr.addstr(y, x, text, attr)
+            self._stdscr.addstr(y, x, clipped, attr)
         except curses.error:
             pass
 
     def _clear(self) -> None:
-        self._stdscr.erase()
+        try:
+            self._stdscr.erase()
+        except curses.error:
+            pass
 
     def _hline(self, y: int, x: int, width: int, char: str = "#") -> None:
         self._safe_addstr(y, x, char * max(0, width), _attr(Theme.BORDER))
@@ -468,21 +598,140 @@ class EpicTUI:
         for i in range(1, h - 1):
             self._safe_addstr(y + i, x, "#", _attr(Theme.BORDER))
             self._safe_addstr(y + i, x + w - 1, "#", _attr(Theme.BORDER))
-            # clear interior lightly for clean panel
-            self._safe_addstr(y + i, x + 1, " " * (w - 2), 0)
+            self._safe_addstr(y + i, x + 1, " " * max(0, w - 2), 0)
         self._safe_addstr(y + h - 1, x, "#" + ("=" * (w - 2)) + "#", _attr(Theme.BORDER, True))
         if title:
-            t = f"[ {title} ]"
-            self._safe_addstr(y, x + 2, t[: w - 4], _attr(Theme.TITLE, True))
+            self._safe_addstr(y, x + 2, f"[ {title} ]", _attr(Theme.TITLE, True))
+
+    def _append_activity(self, line: str) -> None:
+        """Append one sanitized line to the locked activity log (thread-safe)."""
+        cleaned = _ANSI_RE.sub("", line or "").replace("\r", "").rstrip()
+        if not cleaned:
+            return
+        cleaned = "".join(ch if ch == "\t" or (32 <= ord(ch) < 127) else "?" for ch in cleaned)
+        if not cleaned.strip():
+            return
+        # Hard-wrap long lines so draw never depends on curses wrap
+        chunks: List[str] = []
+        while cleaned:
+            chunks.append(cleaned[:120])
+            cleaned = cleaned[120:]
+        with self._activity_lock:
+            for chunk in chunks:
+                self._activity_lines.append(chunk)
+
+    def _activity_attr(self, line: str) -> int:
+        s = line.lstrip()
+        if s.startswith(("[+]", "[*]")) or " success" in s.lower():
+            return _attr(Theme.SUCCESS)
+        if s.startswith(("[!]", "[-]")) or "warn" in s.lower():
+            return _attr(Theme.WARN)
+        if "error" in s.lower() or "fail" in s.lower():
+            return _attr(Theme.ERROR)
+        return _attr(Theme.DIM)
+
+    def _win_addstr(self, win: Any, y: int, x: int, text: str, attr: int = 0) -> None:
+        """Write into a curses window without wrapping."""
+        try:
+            wh, ww = win.getmaxyx()
+        except curses.error:
+            return
+        if y < 0 or y >= wh or x < 0 or x >= ww:
+            return
+        text = (text or "").replace("\n", " ").replace("\r", "")
+        if not text:
+            return
+        if len(text) == 1 and _char_cols(text) == 1 and x == ww - 1:
+            try:
+                win.addch(y, x, text, attr)
+            except curses.error:
+                pass
+            return
+        clipped = _clip_cols(text, max(0, ww - x - 1))
+        if not clipped:
+            return
+        try:
+            win.addstr(y, x, clipped, attr)
+        except curses.error:
+            pass
+
+    def _ensure_activity_win(self) -> Optional[Any]:
+        """Create/resize the locked activity overlay window."""
+        h, w = self._size()
+        act_h = self._activity_height()
+        if act_h < 3 or w < 8:
+            self._act_win = None
+            return None
+        y = h - FOOTER_H - act_h
+        # Keep off the last terminal column to avoid curses scroll-on-write
+        ww = max(4, w - 1)
+        try:
+            if self._act_win is not None:
+                by, bx = self._act_win.getbegyx()
+                bh, bw = self._act_win.getmaxyx()
+                if by == y and bx == 0 and bh == act_h and bw == ww:
+                    return self._act_win
+            self._act_win = curses.newwin(act_h, ww, y, 0)
+            self._act_win.scrollok(False)
+            self._act_win.keypad(False)
+        except curses.error:
+            self._act_win = None
+            return None
+        return self._act_win
+
+    def _draw_activity(self) -> None:
+        """Draw the locked activity log as an overlay window (never scrolls with report)."""
+        win = self._ensure_activity_win()
+        act_h = self._activity_height()
+        if win is None or act_h < 3:
+            return
+        try:
+            win.erase()
+        except curses.error:
+            return
+        wh, ww = win.getmaxyx()
+        # border
+        self._win_addstr(win, 0, 0, "#" + ("=" * (ww - 2)) + "#", _attr(Theme.BORDER, True))
+        for i in range(1, wh - 1):
+            self._win_addstr(win, i, 0, "#", _attr(Theme.BORDER))
+            self._win_addstr(win, i, ww - 1, "#", _attr(Theme.BORDER))
+            self._win_addstr(win, i, 1, " " * max(0, ww - 2), 0)
+        self._win_addstr(win, wh - 1, 0, "#" + ("=" * (ww - 2)) + "#", _attr(Theme.BORDER, True))
+        self._win_addstr(win, 0, 2, "[ ACTIVITY LOG ]", _attr(Theme.TITLE, True))
+        with self._activity_lock:
+            lines = list(self._activity_lines)
+        rows = max(1, wh - 2)
+        visible = lines[-rows:]
+        for i, line in enumerate(visible):
+            self._win_addstr(win, 1 + i, 2, line, self._activity_attr(line))
+        try:
+            win.noutrefresh()
+        except curses.error:
+            pass
 
     def _footer(self, text: str = HELP_FOOTER) -> None:
         h, w = self._size()
+        # Never draw footer above activity
         self._hline(h - 2, 0, w - 1, "#")
         msg = text
         if self.status_msg:
             msg = f"##  {self.status_msg}  ##"
             self.status_msg = ""
-        self._safe_addstr(h - 1, 1, msg[: w - 2], _attr(Theme.DIM))
+        self._safe_addstr(h - 1, 1, msg, _attr(Theme.DIM))
+
+    def _present(self, footer: str = HELP_FOOTER) -> None:
+        """Paint footer on stdscr, then overlay locked activity, then flush."""
+        self._footer(footer)
+        try:
+            self._stdscr.noutrefresh()
+        except curses.error:
+            pass
+        # Activity last so report scroll can never cover it
+        self._draw_activity()
+        try:
+            curses.doupdate()
+        except curses.error:
+            pass
 
     def _draw_left_menu(self, left: Rect, idx: int) -> None:
         y, x, h, w = left
@@ -557,6 +806,7 @@ class EpicTUI:
                 panel = (y + used, x, h - used, w)
                 self._draw_box(panel, right_title)
                 self._content = self._inner(panel)
+        # Activity is an overlay painted in _present — do not draw on stdscr here
         self.panel_title = right_title
         return self._content
 
@@ -564,15 +814,24 @@ class EpicTUI:
         if not self._content:
             return
         y, x, h, w = self._content
-        if row < 0 or row >= h:
+        if row < 0 or row >= h or col < 0 or col >= w:
             return
-        self._safe_addstr(y + row, x + col, text[: max(0, w - col)], attr)
+        abs_y = y + row
+        # Hard clamp: never paint into the locked activity / footer band
+        if abs_y >= self._activity_top():
+            return
+        self._safe_addstr(abs_y, x + col, _clip_cols(text or "", max(0, w - col)), attr)
 
     def _content_size(self) -> Tuple[int, int]:
         if not self._content:
-            return self._size()
-        _, _, h, w = self._content
-        return h, w
+            # Fall back to body area only — never the full terminal (would scroll into activity)
+            h, w = self._size()
+            body_h = max(5, h - FOOTER_H - self._activity_height())
+            return max(1, body_h - 3), max(1, w - 4)
+        y, x, h, w = self._content
+        # Clamp height so last row stays strictly above activity
+        max_h = max(1, self._activity_top() - y)
+        return min(h, max_h), w
 
     @staticmethod
     def _wrap_text(text: str, width: int) -> List[str]:
@@ -662,7 +921,15 @@ class EpicTUI:
                     self._stdscr.move(cy + row, cx + fx + min(pos, width - 1))
                 except curses.error:
                     pass
-                self._stdscr.refresh()
+                try:
+                    self._stdscr.noutrefresh()
+                except curses.error:
+                    pass
+                self._draw_activity()
+                try:
+                    curses.doupdate()
+                except curses.error:
+                    pass
                 ch = self._stdscr.get_wch()
                 if ch in ("\n", "\r", curses.KEY_ENTER):
                     return "".join(buf)
@@ -716,8 +983,7 @@ class EpicTUI:
                     self._content_write(
                         row0 + 2 + i, min(42, cw // 2), f":: {desc}"[: cw // 2], _attr(Theme.DIM)
                     )
-            self._footer(f"##  {title}  |  Esc back  ##")
-            self._stdscr.refresh()
+            self._present(f"##  {title}  |  Esc back  ##")
             ch = self._stdscr.getch()
             if ch in (curses.KEY_UP, ord("k")):
                 idx = (idx - 1) % len(items)
@@ -727,6 +993,8 @@ class EpicTUI:
                 return items[idx][0]
             elif ch in (27, ord("q"), ord("Q")):
                 return None
+            elif ch == curses.KEY_RESIZE:
+                continue
             elif ord("1") <= ch <= ord("9"):
                 n = ch - ord("1")
                 if n < len(items):
@@ -769,8 +1037,7 @@ class EpicTUI:
                 attr = _attr(Theme.HIGHLIGHT, True) if sel else _attr(Theme.SUCCESS if j == 0 else Theme.DIM)
                 self._content_write(cy + j, 0, lab, attr)
 
-            self._footer("##  Space toggle  |  Enter  |  Esc  ##")
-            self._stdscr.refresh()
+            self._present("##  Space toggle  |  Enter  |  Esc  ##")
 
             if editing and keys[idx] in fields:
                 new_val = self._prompt_input(
@@ -810,8 +1077,7 @@ class EpicTUI:
         row0 = self._draw_info_box(0)
         self._content_write(row0, 0, prompt, _attr(Theme.ACCENT, True))
         self._content_write(row0 + 1, 0, "Type value, Enter confirm, Esc cancel", _attr(Theme.DIM))
-        self._footer()
-        self._stdscr.refresh()
+        self._present()
         _, cw = self._content_size()
         raw = self._prompt_input(row0 + 3, 0, min(56, cw - 2), "", "> ")
         if raw is None:
@@ -827,8 +1093,7 @@ class EpicTUI:
         self._content_write(1, 0, message, _attr(Theme.WARN, True))
         self._content_write(3, 0, "[Y] Yes, delete     [N] Cancel", _attr(Theme.ACCENT))
         self._content_write(5, 0, "This cannot be undone.", _attr(Theme.DIM))
-        self._footer("##  Y confirm  |  N / Esc cancel  ##")
-        self._stdscr.refresh()
+        self._present("##  Y confirm  |  N / Esc cancel  ##")
         while True:
             ch = self._stdscr.getch()
             if ch in (ord("y"), ord("Y"), curses.KEY_ENTER, ord("\n"), ord("\r")):
@@ -841,32 +1106,37 @@ class EpicTUI:
         while True:
             self._paint_shell(title, logo=False)
             ch_, cw = self._content_size()
-            view_h = max(1, ch_ - 2)
+            view_h = max(1, ch_)
             for i in range(view_h):
                 li = offset + i
                 if li >= len(lines):
                     break
                 text, style = lines[li]
-                self._content_write(i, 0, text[:cw], _style_attr(style))
+                self._content_write(i, 0, text, _style_attr(style))
             total = max(1, len(lines))
+            max_off = max(0, len(lines) - view_h)
+            offset = min(offset, max_off)
             pct = int((offset + 1) / total * 100)
-            self._footer(f"##  {title}  line {offset + 1}/{total} ({pct}%)  |  Esc back  ##")
-            self._stdscr.refresh()
+            # _present overlays ACTIVITY LOG after report paint — stays locked while scrolling
+            self._present(f"##  {title}  line {offset + 1}/{total} ({pct}%)  |  Esc back  ##")
             ch = self._stdscr.getch()
             if ch in (27, ord("q")):
                 return
+            elif ch == curses.KEY_RESIZE:
+                self._act_win = None  # force recreate at new size
+                continue
             elif ch in (curses.KEY_UP, ord("k")):
                 offset = max(0, offset - 1)
             elif ch in (curses.KEY_DOWN, ord("j")):
-                offset = min(max(0, len(lines) - view_h), offset + 1)
+                offset = min(max_off, offset + 1)
             elif ch == curses.KEY_PPAGE:
                 offset = max(0, offset - view_h)
             elif ch == curses.KEY_NPAGE:
-                offset = min(max(0, len(lines) - view_h), offset + view_h)
+                offset = min(max_off, offset + view_h)
             elif ch == curses.KEY_HOME:
                 offset = 0
             elif ch == curses.KEY_END:
-                offset = max(0, len(lines) - view_h)
+                offset = max_off
 
     def _scroll_text(self, title: str, text: Union[str, List[Line]]) -> None:
         if isinstance(text, list):
@@ -875,19 +1145,20 @@ class EpicTUI:
         self._scroll_styled(title, [(ln, "val") for ln in (text.splitlines() or [""])])
 
     def _run_with_spinner(self, label: str, fn: Callable[[], Any]) -> Any:
-        result: Dict[str, Any] = {"value": None, "error": None, "log": ""}
+        result: Dict[str, Any] = {"value": None, "error": None}
         done = threading.Event()
-        log_buf = io.StringIO()
+        # Session-wide capture already redirects stdout; worker just runs fn.
+        # Keep a dedicated sink so late flushes still land in the activity log.
+        stream = self._capture or _ActivityCapture(self)
 
         def worker() -> None:
             try:
-                with redirect_stdout(log_buf), redirect_stderr(log_buf):
-                    result["value"] = fn()
+                result["value"] = fn()
             except Exception as exc:
                 result["error"] = exc
                 result["trace"] = traceback.format_exc()
             finally:
-                result["log"] = log_buf.getvalue()
+                stream.flush_remainder()
                 done.set()
 
         thread = threading.Thread(target=worker, daemon=True)
@@ -895,6 +1166,7 @@ class EpicTUI:
         frames = ("[*    ]", "[ *   ]", "[  *  ]", "[   * ]", "[    *]", "[   * ]", "[  *  ]", "[ *   ]")
         radar = ("|", "/", "-", "\\")
         i = 0
+        self._append_activity(f"[*] {label}")
         self._stdscr.timeout(100)
         try:
             while not done.is_set():
@@ -906,20 +1178,20 @@ class EpicTUI:
                 self._content_write(row0 + 3, 0, "################################", _attr(Theme.BORDER))
                 self._content_write(row0 + 4, 0, "#  RECON IN PROGRESS...        #", _attr(Theme.TITLE, True))
                 self._content_write(row0 + 5, 0, "################################", _attr(Theme.BORDER))
-                log_lines = result.get("log") or log_buf.getvalue()
-                last = log_lines.strip().splitlines()[-1] if log_lines.strip() else ""
-                if last:
-                    _, cw = self._content_size()
-                    self._content_write(row0 + 7, 0, f"> {last}"[:cw], _attr(Theme.DIM))
-                self._footer("##  Please wait -- cancel mid-scan not supported  ##")
-                self._stdscr.refresh()
+                self._content_write(row0 + 7, 0, "See ACTIVITY LOG below for live output", _attr(Theme.DIM))
+                self._present("##  Please wait -- cancel mid-scan not supported  ##")
                 self._stdscr.getch()
                 i += 1
         finally:
             self._stdscr.timeout(-1)
         thread.join(timeout=0.1)
+        stream.flush_remainder()
         if result["error"] is not None:
+            self._append_activity(f"[!] {label} failed: {result['error']}")
+            self._hard_resync()
             raise result["error"]
+        self._append_activity(f"[+] {label} complete")
+        self._hard_resync()
         return result["value"]
 
     def _show_results(self, results: Dict) -> None:
@@ -936,6 +1208,9 @@ class EpicTUI:
             self.toolkit.output_dir = Path(self.settings["output_dir"])
         except OSError as exc:
             self.status_msg = f"Save failed: {exc}"
+        if self._capture:
+            self._capture.flush_remainder()
+        self._hard_resync()
         self._scroll_styled("INTEL REPORT", format_scan_report(results, saved_path=path))
 
     # ── main menu (split-aware) ───────────────────────────────────────────────
@@ -952,7 +1227,7 @@ class EpicTUI:
                     row = self._draw_info_box(0)
                     self._content_write(row, 0, f":: {desc}", _attr(Theme.ACCENT))
                     self._content_write(row + 2, 0, "Enter open · Esc/q quit", _attr(Theme.DIM))
-                self._footer(
+                self._present(
                     f"##  [{self.menu_idx + 1:02d}] {label}  --  {desc}  |  Enter open  |  q quit  ##"
                 )
             else:
@@ -978,8 +1253,7 @@ class EpicTUI:
                         )
                     else:
                         self._content_write(i, 0, f"      [{num}] {mlabel}", _attr(Theme.NORMAL))
-                self._footer("##  Up/Down  |  Enter open  |  q quit  ##")
-            self._stdscr.refresh()
+                self._present("##  Up/Down  |  Enter open  |  q quit  ##")
 
             ch = self._stdscr.getch()
             if ch in (curses.KEY_UP, ord("k")):
@@ -1088,7 +1362,11 @@ class EpicTUI:
     def _apply_tor(self) -> None:
         if self.settings.get("use_tor"):
             from modules.dark_web_intel import DarkWebIntel
+
+            # Prints land in session ACTIVITY LOG via redirected stdout
             self.toolkit.dark_web_intel = DarkWebIntel(use_tor=True)
+            if self._capture:
+                self._capture.flush_remainder()
 
     # ── feature screens ───────────────────────────────────────────────────────
 
@@ -1650,8 +1928,7 @@ class EpicTUI:
                     self._content_write(row0 + 2 + i, min(50, cw - 12), desc[:12], _attr(Theme.DIM))
                 else:
                     self._content_write(row0 + 2 + i, 0, f"      [{num}] {label}", _attr(Theme.NORMAL))
-            self._footer("##  Enter view  |  d delete  |  D wipe all  |  Esc  ##")
-            self._stdscr.refresh()
+            self._present("##  Enter view  |  d delete  |  D wipe all  |  Esc  ##")
 
             ch = self._stdscr.getch()
             if ch in (curses.KEY_UP, ord("k")):
